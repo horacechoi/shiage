@@ -1,0 +1,41 @@
+{
+  "name": "@shiage/next",
+  "version": "0.0.0",
+  "description": "Next.js plugin for Shiage — inspect and edit CSS in Chrome DevTools, save changes to source as Tailwind classes.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shiage/core": "workspace:*",
+    "@shiage/jsx-transform": "workspace:*",
+    "@shiage/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": ">=14"
+  },
+  "tsup": {
+    "entry": [
+      "src/index.ts"
+    ],
+    "format": [
+      "esm"
+    ],
+    "dts": true,
+    "clean": true,
+    "sourcemap": true
+  }
+}

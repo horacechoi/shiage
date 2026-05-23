@@ -1,0 +1,17 @@
+{
+  "name": "@shiage/runtime",
+  "version": "0.0.0",
+  "description": "Shiage browser runtime (Shadow DOM overlay, element picker, style watcher, diff panel) — built as a single inlinable IIFE.",
+  "type": "module",
+  "exports": {
+    "./iife": "./dist/shiage-runtime.iife.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  }
+}
