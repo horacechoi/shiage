@@ -3,6 +3,11 @@ import { PROPERTY_PREFIX, GROUP_TILINGS, type GroupTiling } from './groups'
 import { normalizeValueForKind, type ReverseLookup } from '../tailwind/reverse-lookup'
 import { parseColor, rgbToKey, colorDistance, type Rgb } from '../color'
 import type { CssDecl, ThemeSource } from '../tailwind/types'
+import type { PropertyChange } from '../protocol'
+
+// PropertyChange is the wire shape (defined once in ../protocol); re-exported here since the mapper
+// is its primary consumer and the public API has always surfaced it from core's mapper entry.
+export type { PropertyChange }
 
 export type ClassMatch =
   | { kind: 'canonical'; className: string }
@@ -106,12 +111,6 @@ export function classProducingProperty(
     if (declsPerToken[i]!.some((decl) => decl.property === property)) out.push(classTokens[i]!)
   }
   return out
-}
-
-export interface PropertyChange {
-  property: string
-  oldValue: string
-  newValue: string
 }
 
 export interface ClassEdits {

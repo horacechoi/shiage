@@ -115,7 +115,11 @@ importers:
         specifier: '>=14'
         version: 16.2.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
 
-  packages/runtime: {}
+  packages/runtime:
+    dependencies:
+      '@shiage/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/vite:
     dependencies:

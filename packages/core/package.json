@@ -11,6 +11,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./supported": {
+      "types": "./dist/supported.d.ts",
+      "import": "./dist/supported.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
     }
   },
   "files": [
@@ -43,9 +51,11 @@
     "@types/node": "^25.9.0"
   },
   "tsup": {
-    "entry": [
-      "src/index.ts"
-    ],
+    "entry": {
+      "index": "src/index.ts",
+      "supported": "src/supported.ts",
+      "protocol": "src/protocol/index.ts"
+    },
     "format": [
       "esm"
     ],

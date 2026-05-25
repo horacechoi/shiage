@@ -5,6 +5,11 @@
 export * from './supported'
 export type * from './tailwind/types'
 
+// The WebSocket message contract shared by the runtime and the dev-server plugins. Browser-safe
+// (types + PROTOCOL_VERSION only); also exposed at the "@shiage/core/protocol" subpath so the
+// runtime can import it without resolving the Node-only barrel.
+export * from './protocol'
+
 // Tailwind theme sources (Node-only; the browser runtime imports only ./supported + protocol types).
 export { detectThemeSource, type DetectOptions } from './tailwind/detect'
 export { createV4ThemeSource, type CreateV4Options } from './tailwind/v4'

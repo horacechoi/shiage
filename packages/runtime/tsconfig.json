@@ -2,7 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": []
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@shiage/core/supported": ["../core/src/supported.ts"],
+      "@shiage/core/protocol": ["../core/src/protocol/index.ts"]
+    }
   },
   "include": ["src", "tests"]
 }
