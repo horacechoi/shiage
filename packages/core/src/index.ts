@@ -33,6 +33,9 @@ export {
   type FindOptions,
 } from './mapper'
 
+// Build the structured SourceDiff the runtime renders, from the AST editor's before/after text.
+export { buildSourceDiff } from './diff'
+
 // The JSX/TSX AST editor (Node-only): locate an element by stamped source location and rewrite
 // its className in place, preserving formatting.
 export { parseJsx } from './ast/parse'

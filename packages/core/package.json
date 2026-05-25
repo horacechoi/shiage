@@ -19,6 +19,10 @@
     "./protocol": {
       "types": "./dist/protocol.d.ts",
       "import": "./dist/protocol.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
     }
   },
   "files": [
@@ -32,8 +36,10 @@
   "dependencies": {
     "@babel/parser": "^7.29.3",
     "@babel/types": "^7.29.0",
+    "diff": "^9.0.0",
     "jiti": "^2.7.0",
-    "magic-string": "^0.30.21"
+    "magic-string": "^0.30.21",
+    "ws": "^8.21.0"
   },
   "peerDependencies": {
     "@tailwindcss/node": "^4",
@@ -48,13 +54,15 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^25.9.0"
+    "@types/node": "^25.9.0",
+    "@types/ws": "^8.18.0"
   },
   "tsup": {
     "entry": {
       "index": "src/index.ts",
       "supported": "src/supported.ts",
-      "protocol": "src/protocol/index.ts"
+      "protocol": "src/protocol/index.ts",
+      "server": "src/server/index.ts"
     },
     "format": [
       "esm"

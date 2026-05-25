@@ -17,7 +17,15 @@ export default defineConfig({
         find: /^@shiage\/core\/protocol$/,
         replacement: fromRoot('./packages/core/src/protocol/index.ts'),
       },
+      {
+        find: /^@shiage\/core\/server$/,
+        replacement: fromRoot('./packages/core/src/server/index.ts'),
+      },
       { find: /^@shiage\/core$/, replacement: fromRoot('./packages/core/src/index.ts') },
+      {
+        find: /^@shiage\/jsx-transform$/,
+        replacement: fromRoot('./packages/jsx-transform/src/index.ts'),
+      },
     ],
   },
   test: {

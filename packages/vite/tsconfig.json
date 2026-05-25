@@ -1,4 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@shiage/core": ["../core/src/index.ts"],
+      "@shiage/core/server": ["../core/src/server/index.ts"],
+      "@shiage/jsx-transform": ["../jsx-transform/src/index.ts"]
+    }
+  },
   "include": ["src", "tests"]
 }

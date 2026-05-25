@@ -50,7 +50,7 @@ guarded by a CI smoke test.)
 ## Build order / current phase
 
 Phases are tracked in the task list. Build phase-by-phase (0→5 to a working Vite milestone, then
-6→7); write tests and make them pass before moving on. **Phases 0–4 complete** — the
+6→7); write tests and make them pass before moving on. **Phases 0–5 complete** — the
 version-agnostic CSS→Tailwind mapper (`@shiage/core`: v3/v4 `ThemeSource`, reverse-lookup,
 `mapChangesToClassEdits`); the JSX/TSX AST editor (`packages/core/src/ast/`: `parse`, `find`,
 `classname`, `merge`, `edit` — `editJsxFile`/`editJsxSource` locate an element by stamped loc and
@@ -66,9 +66,19 @@ adds one in Phase 3 and `find` subtracts one in Phase 2); the WS message contrac
 `@shiage/core/src/protocol` (browser-safe — types + `PROTOCOL_VERSION`), and the runtime imports
 only the Node-free subpaths `@shiage/core/supported` and `@shiage/core/protocol` (real package
 exports, with vitest aliases + runtime tsconfig `paths` resolving them to source so tests/typecheck
-are green from a clean clone without a build). **Currently: Phase 5 (WS protocol wiring + Vite plugin
-— the v1 integration milestone: `@shiage/vite` boots a `ws` server, runs the jsx-transform, inlines
-the runtime IIFE, and routes save→map→edit→diff→write).**
+are green from a clean clone without a build). Phase 5 added the WS protocol wiring + Vite plugin
+(the v1 integration milestone): `buildSourceDiff` (`@shiage/core/diff`); the framework-agnostic Node
+server plumbing (`@shiage/core/server`: `startWsServer` + `wireProtocol`, reused by both plugins);
+`@shiage/vite` (`apply:'serve'`, `enforce:'pre'`) which detects Tailwind + builds the lookup in
+`configureServer`, boots a free-port `ws` server, watches the theme source (→`config-reloaded`),
+stamps JSX via the jsx-transform in `transform`, and inlines the runtime IIFE + `shiage-ws-port`
+meta in `transformIndexHtml`; and `examples/vite-react` (a runnable Tailwind v4 demo). The full
+pick→edit→save→diff→confirm→write→HMR flow is verified live in a browser. **Known issue (Phase 4
+watcher, surfaced by the live milestone): editing padding/margin on an auto-sized element also
+captures the layout-derived `width`/`height` delta, so the mapper writes a spurious `w-[Npx]`
+alongside the intended class — the watcher needs to suppress dimension changes that are derived from
+a box-model edit.** **Currently: Phase 6 (Next.js plugin — webpack/Babel path; reuse
+`@shiage/core/server`).**
 
 ## Resuming in a new session
 
