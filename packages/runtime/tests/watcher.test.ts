@@ -173,3 +173,80 @@ describe('createWatcher — poll path (stylesheet-rule edits)', () => {
     watcher.stop()
   })
 })
+
+describe('createWatcher — redundant-reflection filtering', () => {
+  it('ignores a box-model shorthand that merely reflects a longhand edit', () => {
+    vi.useFakeTimers()
+    // Editing padding-left also changes the `padding` shorthand's computed string. The watcher
+    // tracks longhands only, so the shorthand never counts as its own change.
+    const snapshots = [
+      snap({ 'padding-left': '16px', padding: '8px 16px' }),
+      snap({ 'padding-left': '24px', padding: '8px 16px 8px 24px' }),
+      snap({ 'padding-left': '24px', padding: '8px 16px 8px 24px' }),
+    ]
+    let i = 0
+    const readAll = () => snapshots[Math.min(i++, snapshots.length - 1)]!
+    const watcher = createWatcher(document.createElement('div'), { pollMs: 500, readAll })
+
+    vi.advanceTimersByTime(500)
+    vi.advanceTimersByTime(500)
+    expect(watcher.getCurrentChanges()).toEqual([
+      { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+    ])
+    watcher.stop()
+  })
+
+  it('suppresses a width change reflowed by a padding edit (width not authored)', () => {
+    vi.useFakeTimers()
+    // An auto-width element: a padding edit widens it, so `width` changes too — but the user only
+    // touched padding, so the derived width must not be written back as a hardcoded w-[Npx].
+    const snapshots = [
+      snap({ 'padding-left': '16px', width: '100px' }), // baseline
+      snap({ 'padding-left': '24px', width: '108px' }), // poll 1
+      snap({ 'padding-left': '24px', width: '108px' }), // poll 2 (stable) → both confirmed
+    ]
+    let i = 0
+    const readAll = () => snapshots[Math.min(i++, snapshots.length - 1)]!
+    const watcher = createWatcher(document.createElement('div'), { pollMs: 500, readAll })
+
+    vi.advanceTimersByTime(500)
+    vi.advanceTimersByTime(500)
+    expect(watcher.getCurrentChanges()).toEqual([
+      { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+    ])
+    watcher.stop()
+  })
+
+  it('keeps a width change the user authored inline alongside a padding edit', async () => {
+    const el = document.createElement('div')
+    el.style.paddingLeft = '16px'
+    el.style.width = '100px'
+    document.body.appendChild(el)
+    const watcher = createWatcher(el, { pollMs: 1_000_000 })
+
+    el.style.paddingLeft = '24px'
+    el.style.width = '120px' // explicit width edit — authored inline, so it survives suppression
+    await flushMutations()
+
+    const changes = watcher.getCurrentChanges()
+    expect(changes).toContainEqual({ property: 'padding-left', oldValue: '16px', newValue: '24px' })
+    expect(changes).toContainEqual({ property: 'width', oldValue: '100px', newValue: '120px' })
+    watcher.stop()
+  })
+
+  it('keeps a width change when no box-model property was edited', () => {
+    vi.useFakeTimers()
+    // A genuine width-only edit (e.g. a stylesheet rule): nothing reflowed it, so it stands.
+    const snapshots = [snap({ width: '100px' }), snap({ width: '120px' }), snap({ width: '120px' })]
+    let i = 0
+    const readAll = () => snapshots[Math.min(i++, snapshots.length - 1)]!
+    const watcher = createWatcher(document.createElement('div'), { pollMs: 500, readAll })
+
+    vi.advanceTimersByTime(500)
+    vi.advanceTimersByTime(500)
+    expect(watcher.getCurrentChanges()).toEqual([
+      { property: 'width', oldValue: '100px', newValue: '120px' },
+    ])
+    watcher.stop()
+  })
+})

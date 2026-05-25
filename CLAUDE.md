@@ -73,11 +73,12 @@ server plumbing (`@shiage/core/server`: `startWsServer` + `wireProtocol`, reused
 `configureServer`, boots a free-port `ws` server, watches the theme source (→`config-reloaded`),
 stamps JSX via the jsx-transform in `transform`, and inlines the runtime IIFE + `shiage-ws-port`
 meta in `transformIndexHtml`; and `examples/vite-react` (a runnable Tailwind v4 demo). The full
-pick→edit→save→diff→confirm→write→HMR flow is verified live in a browser. **Known issue (Phase 4
-watcher, surfaced by the live milestone): editing padding/margin on an auto-sized element also
-captures the layout-derived `width`/`height` delta, so the mapper writes a spurious `w-[Npx]`
-alongside the intended class — the watcher needs to suppress dimension changes that are derived from
-a box-model edit.** **Currently: Phase 6 (Next.js plugin — webpack/Babel path; reuse
+pick→edit→save→diff→confirm→write→HMR flow is verified live in a browser. The watcher diffs
+**longhands only** (box-model/gap/radius shorthands like `padding` are redundant reflections of
+their longhands) and **suppresses layout-derived `width`/`height`/`min`/`max` changes when a
+box-model property was edited** (unless the dimension is authored on the element's own inline
+style), so editing padding on an auto-sized element yields a clean single-class edit instead of a
+spurious `w-[Npx]`. **Currently: Phase 6 (Next.js plugin — webpack/Babel path; reuse
 `@shiage/core/server`).**
 
 ## Resuming in a new session
