@@ -1,4 +1,29 @@
 // @shiage/core — framework-agnostic logic for Shiage.
 // The CSS→Tailwind mapper, JSX AST editor, WebSocket protocol, and diff generator
-// are implemented in Phases 1, 2, and 5. This placeholder keeps the package buildable.
-export const version = '0.0.0'
+// are implemented across Phases 1, 2, and 5.
+
+export * from './supported'
+export type * from './tailwind/types'
+
+// Tailwind theme sources (Node-only; the browser runtime imports only ./supported + protocol types).
+export { detectThemeSource, type DetectOptions } from './tailwind/detect'
+export { createV4ThemeSource, type CreateV4Options } from './tailwind/v4'
+export { createV3ThemeSource, type CreateV3Options } from './tailwind/v3'
+export {
+  buildReverseLookup,
+  normalizeValueForKind,
+  type ReverseLookup,
+  type ColorTable,
+  type ColorEntry,
+} from './tailwind/reverse-lookup'
+
+// The CSS → Tailwind mapper.
+export {
+  findClassForProperty,
+  classProducingProperty,
+  mapChangesToClassEdits,
+  type ClassMatch,
+  type ClassEdits,
+  type PropertyChange,
+  type FindOptions,
+} from './mapper'

@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+
+/* A custom theme extension, to prove the adapter reads the project's real theme,
+   not just Tailwind's defaults. Enables text-brand / bg-brand / border-brand. */
+@theme {
+  --color-brand: #ff5500;
+}

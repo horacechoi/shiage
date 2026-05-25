@@ -50,4 +50,6 @@ guarded by a CI smoke test.)
 ## Build order / current phase
 
 Phases are tracked in the task list. Build phase-by-phase (0→5 to a working Vite milestone, then
-6→7); write tests and make them pass before moving on. **Currently: Phase 0 (monorepo setup).**
+6→7); write tests and make them pass before moving on. **Phases 0–1 complete** (monorepo + the
+version-agnostic CSS→Tailwind mapper: `@shiage/core` with v3/v4 `ThemeSource`, reverse-lookup,
+and `mapChangesToClassEdits`, all in `packages/core/src`). **Currently: Phase 2 (JSX/TSX AST editor).**

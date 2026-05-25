@@ -1,0 +1,10 @@
+{
+  "name": "@shiage-fixture/tailwind-v4",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tailwindcss/node": "^4",
+    "tailwindcss": "^4"
+  }
+}

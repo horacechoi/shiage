@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
+    "gen:supported": "node scripts/gen-supported-md.mjs",
     "dev": "pnpm -r --parallel dev",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
