@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shiage runtime preview</title>
+    <!--
+      Standalone preview for the @shiage/runtime overlay (Phase 4). There is NO dev server here, so:
+        • the connection dot stays red and "Save" is a no-op (the save → diff → write round-trip
+          needs the Phase 5 Vite plugin + WebSocket server);
+        • what you CAN exercise is the overlay, the element picker, and live change detection.
+      The data-shiage-loc attributes below are hand-written to mimic what @shiage/jsx-transform
+      stamps onto host elements at build time, so the picker resolves a source location.
+
+      Run it:   npx serve packages/runtime   →   open http://localhost:3000/preview.html
+      (or just open this file directly in Chrome — file:// works for the UI preview)
+    -->
+    <style>
+      body {
+        margin: 0;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f3f4f6;
+        color: #111827;
+        min-height: 100vh;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 48px 24px 120px;
+      }
+      .instructions {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #374151;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 32px;
+      }
+      .instructions code {
+        font-family: ui-monospace, Menlo, monospace;
+        background: #f3f4f6;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 data-shiage-loc="preview.html:48:7" style="font-size: 28px; margin-bottom: 8px">
+        Shiage runtime preview
+      </h1>
+
+      <div class="instructions">
+        <strong>Try it:</strong>
+        <ol style="margin: 8px 0 0; padding-left: 20px">
+          <li>Click the <strong>Shiage</strong> pill (bottom-right) → <em>Pick element</em>.</li>
+          <li>Click one of the stamped elements below (you'll see the outline highlight).</li>
+          <li>
+            Open Chrome DevTools, select that element, and edit a supported CSS value — e.g.
+            <code>padding</code>, <code>color</code>, <code>border-radius</code>. Try both an
+            <em>element.style</em> (inline) edit and editing a matching CSS rule.
+          </li>
+          <li>Watch the pill / panel update to <strong>"Save N changes."</strong></li>
+        </ol>
+        <p style="margin: 12px 0 0; color: #6b7280">
+          Saving is disabled here (no dev server) — that's the Phase 5 milestone.
+        </p>
+      </div>
+
+      <div
+        data-shiage-loc="preview.html:66:7"
+        style="
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 24px;
+          margin-bottom: 20px;
+        "
+      >
+        <h2 data-shiage-loc="preview.html:76:9" style="margin: 0 0 8px; font-size: 18px">A card</h2>
+        <p data-shiage-loc="preview.html:79:9" style="margin: 0; color: #6b7280; font-size: 14px">
+          Pick me and nudge my padding, color, or border-radius in DevTools.
+        </p>
+      </div>
+
+      <button
+        data-shiage-loc="preview.html:88:7"
+        style="
+          appearance: none;
+          border: none;
+          border-radius: 8px;
+          background: #2563eb;
+          color: #ffffff;
+          font-size: 15px;
+          font-weight: 600;
+          padding: 12px 20px;
+          cursor: pointer;
+        "
+      >
+        A button
+      </button>
+    </main>
+
+    <script src="./dist/shiage-runtime.iife.js"></script>
+  </body>
+</html>
