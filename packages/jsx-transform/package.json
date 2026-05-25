@@ -19,6 +19,15 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "@babel/core": "^7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/types": "^7.29.0",
+    "@types/babel__core": "^7.20.0",
+    "@types/node": "^25.9.0"
+  },
   "tsup": {
     "entry": [
       "src/index.ts"

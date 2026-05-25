@@ -50,14 +50,16 @@ guarded by a CI smoke test.)
 ## Build order / current phase
 
 Phases are tracked in the task list. Build phase-by-phase (0→5 to a working Vite milestone, then
-6→7); write tests and make them pass before moving on. **Phases 0–2 complete** — the
+6→7); write tests and make them pass before moving on. **Phases 0–3 complete** — the
 version-agnostic CSS→Tailwind mapper (`@shiage/core`: v3/v4 `ThemeSource`, reverse-lookup,
-`mapChangesToClassEdits`) and the JSX/TSX AST editor (`packages/core/src/ast/`: `parse`, `find`,
+`mapChangesToClassEdits`); the JSX/TSX AST editor (`packages/core/src/ast/`: `parse`, `find`,
 `classname`, `merge`, `edit` — `editJsxFile`/`editJsxSource` locate an element by stamped loc and
-rewrite its className via `magic-string`, never regenerating). Pinned convention: `data-shiage-loc`
-line/column are **1-based**; Babel's `loc.start.column` is 0-based, so `find` subtracts one and the
-Phase-3 stamper must add one. **Currently: Phase 3 (JSX source-location stamping in
-`@shiage/jsx-transform`).**
+rewrite its className via `magic-string`, never regenerating); and the source-location stamper
+(`@shiage/jsx-transform`: a Babel plugin stamping `data-shiage-loc="relPath:line:col"` on lowercase
+host elements only, default-exported, runs before the JSX transform). Pinned convention:
+`data-shiage-loc` line/column are **1-based**; Babel's `loc.start.column` is 0-based, so the stamper
+adds one (Phase 3) and `find` subtracts one (Phase 2). **Currently: Phase 4 (browser runtime in
+`@shiage/runtime` — Shadow-DOM overlay/picker/watcher/diff/WS client, built as an IIFE).**
 
 ## Resuming in a new session
 
