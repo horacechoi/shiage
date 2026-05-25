@@ -50,6 +50,26 @@ guarded by a CI smoke test.)
 ## Build order / current phase
 
 Phases are tracked in the task list. Build phase-by-phase (0→5 to a working Vite milestone, then
-6→7); write tests and make them pass before moving on. **Phases 0–1 complete** (monorepo + the
-version-agnostic CSS→Tailwind mapper: `@shiage/core` with v3/v4 `ThemeSource`, reverse-lookup,
-and `mapChangesToClassEdits`, all in `packages/core/src`). **Currently: Phase 2 (JSX/TSX AST editor).**
+6→7); write tests and make them pass before moving on. **Phases 0–2 complete** — the
+version-agnostic CSS→Tailwind mapper (`@shiage/core`: v3/v4 `ThemeSource`, reverse-lookup,
+`mapChangesToClassEdits`) and the JSX/TSX AST editor (`packages/core/src/ast/`: `parse`, `find`,
+`classname`, `merge`, `edit` — `editJsxFile`/`editJsxSource` locate an element by stamped loc and
+rewrite its className via `magic-string`, never regenerating). Pinned convention: `data-shiage-loc`
+line/column are **1-based**; Babel's `loc.start.column` is 0-based, so `find` subtracts one and the
+Phase-3 stamper must add one. **Currently: Phase 3 (JSX source-location stamping in
+`@shiage/jsx-transform`).**
+
+## Resuming in a new session
+
+Prefer a fresh session per phase — it avoids lossy context compaction and keeps cost/latency down.
+To pick up cleanly:
+
+1. **Orient.** This file and the user's memory auto-load. Read the engineering plan
+   (`~/.claude/plans/users-horacechoi-desktop-shiage-build-p-dazzling-candy.md`) and run
+   `git log --oneline` to see which phases are done. The current phase is marked just above.
+2. **Confirm the foundation is green before building on it:** `pnpm install` (if needed), then
+   `pnpm test && pnpm typecheck && pnpm lint`. The test suite is the contract — trust it.
+3. **Source of truth** is git history + this file + the plan + the tests — *not* the in-session todo
+   list (rebuild it each session). Update the "current phase" line above when a phase completes.
+4. **Work happens on the `foundation` branch**; commit at each phase boundary with a descriptive
+   message ending in the `Co-Authored-By` trailer. Push to back up / trigger CI.

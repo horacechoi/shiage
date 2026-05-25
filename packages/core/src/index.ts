@@ -27,3 +27,11 @@ export {
   type PropertyChange,
   type FindOptions,
 } from './mapper'
+
+// The JSX/TSX AST editor (Node-only): locate an element by stamped source location and rewrite
+// its className in place, preserving formatting.
+export { parseJsx } from './ast/parse'
+export { findOpeningElementByLoc, type SourceLoc } from './ast/find'
+export { analyzeClassName, type ClassNameAnalysis, type ClassSpan } from './ast/classname'
+export { mergeClassString } from './ast/merge'
+export { editJsxSource, editJsxFile, type EditResult, type ClassNameEdits } from './ast/edit'

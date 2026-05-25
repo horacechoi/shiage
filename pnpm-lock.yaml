@@ -62,12 +62,21 @@ importers:
 
   packages/core:
     dependencies:
+      '@babel/parser':
+        specifier: ^7.29.3
+        version: 7.29.3
+      '@babel/types':
+        specifier: ^7.29.0
+        version: 7.29.0
       '@tailwindcss/node':
         specifier: ^4
         version: 4.3.0
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
+      magic-string:
+        specifier: ^0.30.21
+        version: 0.30.21
       tailwindcss:
         specifier: ^3 || ^4
         version: 4.3.0
