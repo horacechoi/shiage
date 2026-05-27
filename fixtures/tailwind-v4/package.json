@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "comment": "Pinned to the tested minor (~4.3): tailwind-v4-smoke.test.ts is the canary for the __unstable__ DesignSystem API at this version. Bump deliberately so the canary re-runs against the new minor.",
   "dependencies": {
-    "@tailwindcss/node": "^4",
-    "tailwindcss": "^4"
+    "@tailwindcss/node": "~4.3.0",
+    "tailwindcss": "~4.3.0"
   }
 }
