@@ -92,6 +92,40 @@ export const OVERLAY_CSS = `
 .shiage-warn { color: #fbbf24; font-size: 12px; }
 .shiage-error { color: #f87171; }
 
+.shiage-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: #0b1220;
+}
+.shiage-group--excluded { opacity: 0.55; }
+.shiage-group__head { display: flex; align-items: center; gap: 8px; }
+.shiage-group__head .shiage-title { font-weight: 600; }
+.shiage-group__head .shiage-loc { font-size: 11px; }
+
+.shiage-prop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #d1d5db;
+  padding-left: 20px;
+}
+.shiage-prop--excluded { opacity: 0.5; text-decoration: line-through; }
+
+.shiage-check {
+  accent-color: #2563eb;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  cursor: pointer;
+  margin: 0;
+}
+
 .shiage-highlight {
   position: fixed;
   pointer-events: none;

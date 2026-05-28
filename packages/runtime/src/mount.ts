@@ -1,15 +1,14 @@
-// The orchestrator: mounts the overlay and drives the pick → edit → save → review → apply state
-// machine, wiring the panel, picker, watcher, and WS client together. Kept separate from the IIFE
-// entry (index.ts) so it can be imported and driven in tests without auto-running.
+// The orchestrator: mounts the overlay and drives the ambient-tracking state machine, wiring the
+// panel, watch-manager, and WS client together. Kept separate from the IIFE entry (index.ts) so
+// it can be imported and driven in tests without auto-running.
 //
 // Mounting is idempotent via `window.__SHIAGE__` so a dev-server HMR re-injection of the runtime
-// doesn't stack overlays; the picked element's source location is stashed in sessionStorage so a
-// full-reload HMR can re-select it and resume watching.
+// doesn't stack overlays. There is no "picked element" — the watch manager auto-tracks every
+// stamped element in the document, the panel shows their accumulated changes grouped by element,
+// and the user excludes any spurious ones before saving the whole batch.
 import { OVERLAY_CSS } from './overlay/styles'
-import { createPanel, type Panel } from './overlay/panel'
-import { startPicking, type PickResult } from './picker/picker'
-import { createHighlight } from './picker/highlight'
-import { createWatcher, type Watcher } from './watcher/watcher'
+import { createPanel, type Panel, type ReviewElement } from './overlay/panel'
+import { createWatchManager, type WatchManager } from './watcher/watch-manager'
 import { createWsClient, type WsClient, type WebSocketLike } from './client/ws-client'
 import { PROTOCOL_VERSION, type ServerMessage } from '@shiage/core/protocol'
 
@@ -17,7 +16,6 @@ import { PROTOCOL_VERSION, type ServerMessage } from '@shiage/core/protocol'
 export const RUNTIME_VERSION = '0.1.0'
 
 const HOST_ATTR = 'data-shiage-host'
-const PICKED_LOC_KEY = 'shiage:picked-loc'
 
 export interface ShiageInstance {
   unmount(): void
@@ -25,6 +23,8 @@ export interface ShiageInstance {
   readonly shadow: ShadowRoot
   /** The panel controller — exposed for tests. */
   readonly panel: Panel
+  /** The watch manager — exposed for tests so a test can drive `sync()` synchronously. */
+  readonly manager: WatchManager
 }
 
 declare global {
@@ -65,13 +65,10 @@ export function mount(options: MountOptions = {}): ShiageInstance {
   style.textContent = OVERLAY_CSS
   shadow.appendChild(style)
 
-  const highlight = createHighlight(shadow)
-
-  // ── Orchestrator state ──
-  let pickedElement: Element | null = null
-  let pickedLoc: string | null = null
-  let watcher: Watcher | null = null
-  let stopPick: (() => void) | null = null
+  // ── Orchestrator state: the user's per-source-loc exclusion choices. Keyed by `data-shiage-loc`
+  // so a checkbox the user unticked survives an HMR re-render of the same source site. ──
+  const excludedElements = new Set<string>()
+  const excludedProps = new Map<string, Set<string>>()
   let currentSaveId: string | null = null
 
   const genSaveId =
@@ -82,75 +79,50 @@ export function mount(options: MountOptions = {}): ShiageInstance {
         : Math.random().toString(36).slice(2))
 
   const panel = createPanel(shadow, {
-    onPick: enterPickMode,
     onSave: doSave,
     onConfirm: doConfirm,
     onCancel: dismiss,
+    onToggleElement: toggleElement,
+    onToggleProperty: toggleProperty,
   })
 
-  function renderPickedOrIdle(): void {
-    if (pickedElement) {
-      panel.render({
-        kind: 'picked',
-        tagName: pickedElement.tagName,
-        sourceLoc: pickedLoc,
-        changeCount: watcher?.getCurrentChanges().length ?? 0,
-      })
-    } else {
-      panel.render({ kind: 'idle' })
+  // Build the current `tracking` view by joining live manager state with the user's exclusion
+  // sets. Called any time something that could change the view does — a tracker update, a toggle,
+  // a successful apply.
+  function renderTracking(): void {
+    const all = manager.getAllChanges()
+    const elements: ReviewElement[] = all.map((e) => ({
+      sourceLoc: e.sourceLoc,
+      tagName: e.element.tagName,
+      changes: e.changes,
+      excluded: excludedElements.has(e.sourceLoc),
+      excludedProps: excludedProps.get(e.sourceLoc) ?? new Set<string>(),
+    }))
+    let includedCount = 0
+    for (const re of elements) {
+      if (re.excluded) continue
+      for (const c of re.changes) if (!re.excludedProps.has(c.property)) includedCount += 1
     }
-  }
-
-  function enterPickMode(): void {
-    stopPick?.()
-    panel.render({ kind: 'picking' })
-    stopPick = startPicking({
-      isOwnElement: (el) => el.closest(`[${HOST_ATTR}]`) !== null,
-      onHover: (el) => (el ? highlight.show(el) : highlight.hide()),
-      onPick: (result) => {
-        highlight.hide()
-        stopPick = null
-        selectElement(result)
-      },
-      onCancel: () => {
-        highlight.hide()
-        stopPick = null
-        renderPickedOrIdle()
-      },
-    })
-  }
-
-  function selectElement(result: PickResult): void {
-    watcher?.stop()
-    // Operate on the nearest stamped (host) element — the one whose className we can rewrite.
-    pickedElement = result.matchedElement ?? result.element
-    pickedLoc = result.sourceLoc
-    if (pickedLoc) sessionStorage.setItem(PICKED_LOC_KEY, pickedLoc)
-    watcher = createWatcher(pickedElement, { onChange: renderPickedOrIdle })
-    renderPickedOrIdle()
+    panel.render({ kind: 'tracking', elements, includedCount })
   }
 
   function doSave(): void {
-    if (!ws || !watcher || !pickedLoc || !pickedElement) return
-    const changes = watcher.getCurrentChanges()
-    if (changes.length === 0) return
+    if (!ws) return
+    const edits = manager
+      .getAllChanges()
+      .filter((e) => !excludedElements.has(e.sourceLoc))
+      .map((e) => ({
+        sourceLoc: e.sourceLoc,
+        className: e.className,
+        changes: e.changes.filter(
+          (c) => !(excludedProps.get(e.sourceLoc)?.has(c.property) ?? false),
+        ),
+      }))
+      .filter((e) => e.changes.length > 0)
+    if (edits.length === 0) return
     currentSaveId = genSaveId()
     const rootFontSizePx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-    // Phase-A stopgap: the single-element picker flow sends a one-entry batch under the new
-    // protocol shape. Phase C replaces this whole orchestrator with the ambient watch manager
-    // and a real multi-element batch.
-    ws.send({
-      type: 'save',
-      saveId: currentSaveId,
-      edits: [
-        {
-          sourceLoc: pickedLoc,
-          className: pickedElement.getAttribute('class') ?? '',
-          changes,
-        },
-      ],
-      rootFontSizePx,
-    })
+    ws.send({ type: 'save', saveId: currentSaveId, edits, rootFontSizePx })
     panel.render({ kind: 'saving' })
   }
 
@@ -163,7 +135,22 @@ export function mount(options: MountOptions = {}): ShiageInstance {
   function dismiss(): void {
     if (ws && currentSaveId) ws.send({ type: 'cancel', saveId: currentSaveId })
     currentSaveId = null
-    renderPickedOrIdle()
+    renderTracking()
+  }
+
+  function toggleElement(sourceLoc: string, excluded: boolean): void {
+    if (excluded) excludedElements.add(sourceLoc)
+    else excludedElements.delete(sourceLoc)
+    renderTracking()
+  }
+
+  function toggleProperty(sourceLoc: string, property: string, excluded: boolean): void {
+    const set = excludedProps.get(sourceLoc) ?? new Set<string>()
+    if (excluded) set.add(property)
+    else set.delete(property)
+    if (set.size === 0) excludedProps.delete(sourceLoc)
+    else excludedProps.set(sourceLoc, set)
+    renderTracking()
   }
 
   function onMessage(message: ServerMessage): void {
@@ -177,12 +164,9 @@ export function mount(options: MountOptions = {}): ShiageInstance {
         break
       case 'diff-preview':
         if (message.saveId !== currentSaveId) return
-        // Phase-A stopgap: the single-element flow shows the first (and only) diff. Phase C's
-        // panel rewrite will render all `diffs` as separate file blocks. A `diff-preview` reply
-        // is only sent when at least one file was staged, so `diffs[0]` is always defined here.
         panel.render({
-          kind: 'review',
-          diff: message.diffs[0]!,
+          kind: 'preview',
+          diffs: message.diffs,
           warnings: message.warnings,
           unsupported: message.unsupported,
         })
@@ -195,18 +179,26 @@ export function mount(options: MountOptions = {}): ShiageInstance {
         if (message.saveId !== currentSaveId) return
         currentSaveId = null
         if (message.success) {
-          watcher?.rebaseline()
+          // Everything written is the new baseline; the user's per-loc exclusion choices are spent.
+          manager.rebaseline()
+          excludedElements.clear()
+          excludedProps.clear()
           panel.render({ kind: 'applied' })
         } else {
-          panel.render({ kind: 'error', message: message.error ?? 'Failed to write the file.' })
+          panel.render({ kind: 'error', message: message.error ?? 'Failed to write the files.' })
         }
         break
       case 'config-reloaded':
-        // The theme changed; the element's current computed styles are still valid, so the baseline
-        // stands. Nothing to do for now.
+        // The theme changed; the elements' current computed styles are still valid, so baselines
+        // stand. Nothing to do for now.
         break
     }
   }
+
+  // ── The watch manager: discovers stamped elements at construction (silently) and re-syncs on
+  // every DOM mutation. `onChange` is debounced naturally because the manager fires it at most
+  // once per tick of its shared poll / per MutationObserver batch. ──
+  const manager = createWatchManager({ onChange: renderTracking })
 
   // ── WS client ──
   let ws: WsClient | null = null
@@ -232,33 +224,19 @@ export function mount(options: MountOptions = {}): ShiageInstance {
   }
 
   function unmount(): void {
-    stopPick?.()
-    watcher?.stop()
+    manager.stop()
     ws?.close()
     panel.destroy()
-    highlight.destroy()
     host.remove()
     delete window.__SHIAGE__
   }
 
-  const instance: ShiageInstance = { unmount, shadow, panel }
+  const instance: ShiageInstance = { unmount, shadow, panel, manager }
   window.__SHIAGE__ = instance
 
-  // ── HMR full-reload survival: re-pick the previously selected element if it's still in the DOM. ──
-  const savedLoc = sessionStorage.getItem(PICKED_LOC_KEY)
-  if (savedLoc) {
-    // The loc is `relPath:line:col` (no quotes/backslashes), but escape defensively for the
-    // attribute selector rather than depend on CSS.escape (not in every environment).
-    const el = document.querySelector(`[data-shiage-loc="${savedLoc.replace(/["\\]/g, '\\$&')}"]`)
-    if (el) {
-      selectElement({ element: el, matchedElement: el, sourceLoc: savedLoc })
-    } else {
-      sessionStorage.removeItem(PICKED_LOC_KEY)
-      renderPickedOrIdle()
-    }
-  } else {
-    renderPickedOrIdle()
-  }
+  // Initial render — empty if no stamped elements yet, otherwise reflects whatever the manager
+  // discovered on construction. No sessionStorage re-pick needed: the manager auto-discovers.
+  renderTracking()
 
   return instance
 }

@@ -30,7 +30,10 @@ class FakeWebSocket implements WebSocketLike {
   }
 }
 
+// Let happy-dom's MutationObserver microtasks run, plus the manager's structural-sync microtask
+// and any setTimeout(0)-deferred work.
 const flushMutations = async () => {
+  await Promise.resolve()
   await Promise.resolve()
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -39,7 +42,6 @@ afterEach(() => {
   window.__SHIAGE__?.unmount()
   document.body.innerHTML = ''
   document.head.innerHTML = ''
-  sessionStorage.clear()
   FakeWebSocket.instances = []
 })
 
@@ -57,7 +59,7 @@ describe('mount', () => {
     expect(first.shadow.querySelector('.shiage-pill')).toBeTruthy()
   })
 
-  it('starts idle and toggles the panel from the pill', () => {
+  it('starts in empty tracking and toggles the panel from the pill', () => {
     const instance = mount({ autoConnect: false })
     const panel = instance.shadow.querySelector('.shiage-panel') as HTMLElement
     const pill = instance.shadow.querySelector('.shiage-pill') as HTMLButtonElement
@@ -65,7 +67,7 @@ describe('mount', () => {
     pill.click()
     expect(panel.hidden).toBe(false)
     expect(instance.shadow.querySelector('.shiage-body')!.textContent).toContain(
-      'No element picked',
+      'Edit CSS in DevTools',
     )
   })
 
@@ -76,24 +78,35 @@ describe('mount', () => {
     expect(window.__SHIAGE__).toBeUndefined()
   })
 
-  it('restores the picked element from sessionStorage after an HMR reload', () => {
-    sessionStorage.setItem('shiage:picked-loc', 'src/App.tsx:42:9')
-    const button = document.createElement('button')
-    button.setAttribute('data-shiage-loc', 'src/App.tsx:42:9')
-    document.body.appendChild(button)
+  it('tracks elements already in the DOM at boot and surfaces edits on them', async () => {
+    const el = document.createElement('button')
+    el.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    el.style.paddingLeft = '16px'
+    document.body.appendChild(el)
 
     const instance = mount({ autoConnect: false })
-    const body = instance.shadow.querySelector('.shiage-body')!
-    expect(body.textContent).toContain('src/App.tsx:42:9')
-    expect(body.textContent).toContain('<button>')
+
+    el.style.paddingLeft = '24px'
+    await flushMutations()
+
+    instance.panel.open()
+    const text = instance.shadow.querySelector('.shiage-body')!.textContent ?? ''
+    expect(text).toContain('src/App.tsx:1:1')
+    expect(text).toContain('padding-left: 16px → 24px')
+    expect(text).toContain('Save 1 change')
   })
 
-  it('drives pick → inline edit → save over the socket', async () => {
-    const target = document.createElement('button')
-    target.setAttribute('data-shiage-loc', 'src/App.tsx:10:5')
-    target.setAttribute('class', 'p-4')
-    target.style.paddingLeft = '16px'
-    document.body.appendChild(target)
+  it('batches ambient edits across multiple elements into a single save message', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+    const b = document.createElement('button')
+    b.setAttribute('data-shiage-loc', 'src/App.tsx:2:2')
+    b.setAttribute('class', 'p-2')
+    b.style.paddingLeft = '8px'
+    document.body.appendChild(b)
 
     const instance = mount({
       wsUrl: 'ws://localhost:1234',
@@ -101,40 +114,80 @@ describe('mount', () => {
       genSaveId: () => 'save-1',
     })
     const socket = FakeWebSocket.instances[0]!
-    socket.open() // → status open → hello sent
+    socket.open()
 
-    // Click "Pick element" in the panel, then pick the target on the page.
-    instance.shadow.querySelector('.shiage-pill')!.dispatchEvent(new MouseEvent('click'))
-    const pickBtn = [...instance.shadow.querySelectorAll('button')].find(
-      (b) => b.textContent === 'Pick element',
-    )!
-    pickBtn.click()
-    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-
-    // Edit padding in "DevTools".
-    target.style.paddingLeft = '24px'
+    a.style.paddingLeft = '24px'
+    b.style.paddingLeft = '16px'
     await flushMutations()
 
-    const saveBtn = [...instance.shadow.querySelectorAll('button')].find((b) =>
-      b.textContent?.startsWith('Save 1 change'),
+    const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
+      btn.textContent?.startsWith('Save 2 changes'),
     ) as HTMLButtonElement
-    expect(saveBtn).toBeTruthy()
-    expect(saveBtn.disabled).toBe(false)
-    saveBtn.click()
+    expect(save).toBeTruthy()
+    expect(save.disabled).toBe(false)
+    save.click()
 
-    const save = socket.parsedSent().find((m) => m.type === 'save')
-    expect(save).toEqual({
-      type: 'save',
-      saveId: 'save-1',
-      edits: [
-        {
-          sourceLoc: 'src/App.tsx:10:5',
-          className: 'p-4',
-          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
-        },
-      ],
-      rootFontSizePx: 16,
+    const sent = socket.parsedSent().find((m) => m.type === 'save')
+    expect(sent).toBeTruthy()
+    if (sent?.type !== 'save') throw new Error('expected save')
+    expect(sent.saveId).toBe('save-1')
+    expect(sent.edits).toHaveLength(2)
+    const byLoc = new Map(sent.edits.map((e) => [e.sourceLoc, e]))
+    expect(byLoc.get('src/App.tsx:1:1')!.changes).toContainEqual({
+      property: 'padding-left',
+      oldValue: '16px',
+      newValue: '24px',
     })
+    expect(byLoc.get('src/App.tsx:2:2')!.changes).toContainEqual({
+      property: 'padding-left',
+      oldValue: '8px',
+      newValue: '16px',
+    })
+  })
+
+  it('honors per-element exclusion: an unchecked element is dropped from the save', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+    const b = document.createElement('button')
+    b.setAttribute('data-shiage-loc', 'src/App.tsx:2:2')
+    b.setAttribute('class', 'p-2')
+    b.style.paddingLeft = '8px'
+    document.body.appendChild(b)
+
+    const instance = mount({
+      wsUrl: 'ws://localhost:1234',
+      WebSocketImpl: FakeWebSocket,
+      genSaveId: () => 'save-1',
+    })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+
+    a.style.paddingLeft = '24px'
+    b.style.paddingLeft = '16px'
+    await flushMutations()
+
+    // Untick the second element's group checkbox.
+    const groups = instance.shadow.querySelectorAll('.shiage-group')
+    expect(groups).toHaveLength(2)
+    const secondHead = groups[1]!.querySelector('.shiage-group__head') as HTMLElement
+    const headBox = secondHead.querySelector('input[type="checkbox"]') as HTMLInputElement
+    headBox.checked = false
+    headBox.dispatchEvent(new Event('change'))
+
+    // After the toggle, the panel re-renders with includedCount=1.
+    const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
+      btn.textContent?.startsWith('Save 1 change'),
+    ) as HTMLButtonElement
+    expect(save).toBeTruthy()
+    save.click()
+
+    const sent = socket.parsedSent().find((m) => m.type === 'save')
+    if (sent?.type !== 'save') throw new Error('expected save')
+    expect(sent.edits).toHaveLength(1)
+    expect(sent.edits[0]!.sourceLoc).toBe('src/App.tsx:1:1')
   })
 
   it('sends a hello with the protocol version on connect', () => {

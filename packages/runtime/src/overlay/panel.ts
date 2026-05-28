@@ -1,30 +1,48 @@
 // The overlay UI: a floating pill that expands to a panel. The panel is a pure view of the
-// orchestrator's state — `render(view)` rebuilds the body for the current step (idle → picking →
-// picked → review → applied) and the orchestrator owns all transitions. The panel only emits intent
-// via callbacks (pick / save / confirm / dismiss). Lives inside the overlay's closed Shadow DOM.
-import type { SourceDiff } from '@shiage/core/protocol'
+// orchestrator's state — `render(view)` rebuilds the body for the current step (tracking → saving
+// → preview → applied) and the orchestrator owns all transitions. The panel only emits intent via
+// callbacks (save / confirm / cancel, plus per-element / per-property exclude toggles). Lives
+// inside the overlay's closed Shadow DOM.
+//
+// In the ambient-tracking flow there is no "picked element": Shiage watches every stamped element
+// and surfaces all detected changes here, grouped by element. The user reviews and unchecks any
+// they didn't mean to make, then saves the whole batch at once.
+import type { PropertyChange, SourceDiff } from '@shiage/core/protocol'
 import type { WsStatus } from '../client/ws-client'
 import { renderDiff } from '../diff/render'
 
+/** One element's contribution to the tracking view, as the orchestrator computed it from the
+ * watch manager + the user's exclusion state. `excluded`/`excludedProps` flow IN; toggles call
+ * back out so the orchestrator can mutate its sets and re-render. */
+export interface ReviewElement {
+  /** Stable group key — survives an HMR re-render of the same source site. */
+  sourceLoc: string
+  /** UPPERCASE per DOM convention; the panel lowercases for display. */
+  tagName: string
+  changes: PropertyChange[]
+  excluded: boolean
+  excludedProps: ReadonlySet<string>
+}
+
 export type PanelView =
-  | { kind: 'idle' }
-  | { kind: 'picking' }
-  | { kind: 'picked'; tagName: string; sourceLoc: string | null; changeCount: number }
+  | { kind: 'tracking'; elements: ReviewElement[]; includedCount: number }
   | { kind: 'saving' }
-  | { kind: 'review'; diff: SourceDiff; warnings: string[]; unsupported: string[] }
+  | { kind: 'preview'; diffs: SourceDiff[]; warnings: string[]; unsupported: string[] }
   | { kind: 'no-edit'; reason: string }
   | { kind: 'applied' }
   | { kind: 'error'; message: string }
 
 export interface PanelCallbacks {
-  /** Enter (or re-enter) pick mode. */
-  onPick(): void
-  /** Send the current changes for a diff preview. */
+  /** Send the included changes for a batched diff preview. */
   onSave(): void
-  /** Confirm the previewed diff (write the file). */
+  /** Confirm the previewed batch (write all files). */
   onConfirm(): void
-  /** Dismiss a review/message and go back. */
+  /** Dismiss the current message and return to tracking. */
   onCancel(): void
+  /** Whole-element toggle: `excluded=true` drops every change on this element from the save. */
+  onToggleElement(sourceLoc: string, excluded: boolean): void
+  /** Per-property toggle: `excluded=true` drops just this property from this element. */
+  onToggleProperty(sourceLoc: string, property: string, excluded: boolean): void
 }
 
 export interface Panel {
@@ -50,6 +68,46 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
   btn.type = 'button'
   btn.addEventListener('click', onClick)
   return btn
+}
+
+function checkbox(checked: boolean, onChange: (checked: boolean) => void): HTMLInputElement {
+  const input = document.createElement('input')
+  input.type = 'checkbox'
+  input.className = 'shiage-check'
+  input.checked = checked
+  input.addEventListener('change', () => onChange(input.checked))
+  return input
+}
+
+/** Render one ReviewElement as a collapsible-feeling group: header (element checkbox + tag + loc)
+ * plus one row per property (property checkbox + "prop: old → new"). The element checkbox toggles
+ * the whole group; property checkboxes carve out individual exclusions. */
+function renderGroup(re: ReviewElement, callbacks: PanelCallbacks): HTMLElement {
+  const group = el('div', `shiage-group${re.excluded ? ' shiage-group--excluded' : ''}`)
+
+  const head = el('div', 'shiage-group__head')
+  head.append(
+    checkbox(!re.excluded, (checked) => callbacks.onToggleElement(re.sourceLoc, !checked)),
+    el('span', 'shiage-title', `<${re.tagName.toLowerCase()}>`),
+    el('span', 'shiage-loc', re.sourceLoc),
+  )
+  group.append(head)
+
+  for (const change of re.changes) {
+    const propExcluded = re.excludedProps.has(change.property)
+    const row = el(
+      'div',
+      `shiage-prop${re.excluded || propExcluded ? ' shiage-prop--excluded' : ''}`,
+    )
+    row.append(
+      checkbox(!propExcluded, (checked) =>
+        callbacks.onToggleProperty(re.sourceLoc, change.property, !checked),
+      ),
+      el('span', undefined, `${change.property}: ${change.oldValue} → ${change.newValue}`),
+    )
+    group.append(row)
+  }
+  return group
 }
 
 export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks): Panel {
@@ -78,64 +136,34 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
     pillLabel.textContent = 'Shiage'
 
     switch (view.kind) {
-      case 'idle': {
-        body.append(
-          el('div', 'shiage-title', 'Shiage'),
-          el('div', 'shiage-muted', 'No element picked.'),
-          button('Pick element', 'shiage-btn shiage-btn--primary', callbacks.onPick),
-        )
-        break
-      }
-      case 'picking': {
-        body.append(
-          el('div', 'shiage-title', 'Pick an element'),
-          el('div', 'shiage-muted', 'Click any element on the page. Press Esc to cancel.'),
-        )
-        break
-      }
-      case 'picked': {
-        const noLoc = view.sourceLoc === null
-        if (view.changeCount > 0) pillLabel.textContent = `Shiage · ${view.changeCount}`
-        body.append(el('div', 'shiage-title', `<${view.tagName.toLowerCase()}>`))
-        if (noLoc) {
-          body.append(
-            el(
-              'div',
-              'shiage-warn',
-              'No source location on this element — is the Shiage plugin running in dev?',
-            ),
-          )
-        } else {
-          body.append(el('div', 'shiage-loc', view.sourceLoc!))
+      case 'tracking': {
+        if (view.includedCount > 0) pillLabel.textContent = `Shiage · ${view.includedCount}`
+        body.append(el('div', 'shiage-title', 'Shiage'))
+
+        if (view.elements.length === 0) {
+          body.append(el('div', 'shiage-muted', 'Edit CSS in DevTools to see changes here.'))
+          break
         }
-        body.append(
-          el(
-            'div',
-            'shiage-muted',
-            view.changeCount === 0
-              ? 'Edit CSS in DevTools to see changes here.'
-              : `${view.changeCount} change${view.changeCount === 1 ? '' : 's'} detected.`,
-          ),
-        )
-        const save = button(
-          view.changeCount === 1 ? 'Save 1 change' : `Save ${view.changeCount} changes`,
-          'shiage-btn shiage-btn--primary',
-          callbacks.onSave,
-        )
-        save.disabled = noLoc || view.changeCount === 0
-        body.append(save, button('Pick another element', 'shiage-btn', callbacks.onPick))
+
+        for (const re of view.elements) body.append(renderGroup(re, callbacks))
+
+        const label =
+          view.includedCount === 1 ? 'Save 1 change' : `Save ${view.includedCount} changes`
+        const save = button(label, 'shiage-btn shiage-btn--primary', callbacks.onSave)
+        save.disabled = view.includedCount === 0
+        body.append(save)
         break
       }
       case 'saving': {
         body.append(
           el('div', 'shiage-title', 'Saving…'),
-          el('div', 'shiage-muted', 'Computing the source edit.'),
+          el('div', 'shiage-muted', 'Computing the source edits.'),
         )
         break
       }
-      case 'review': {
-        body.append(el('div', 'shiage-title', 'Review change'))
-        body.append(renderDiff(view.diff))
+      case 'preview': {
+        body.append(el('div', 'shiage-title', 'Review changes'))
+        for (const diff of view.diffs) body.append(renderDiff(diff))
         for (const warning of view.warnings) body.append(el('div', 'shiage-warn', warning))
         if (view.unsupported.length > 0) {
           body.append(
@@ -161,8 +189,8 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
       case 'applied': {
         body.append(
           el('div', 'shiage-title', 'Saved ✓'),
-          el('div', 'shiage-muted', 'The file was updated; HMR will repaint.'),
-          button('Pick another element', 'shiage-btn shiage-btn--primary', callbacks.onPick),
+          el('div', 'shiage-muted', 'The files were updated; HMR will repaint.'),
+          button('Done', 'shiage-btn shiage-btn--primary', callbacks.onCancel),
         )
         break
       }
@@ -177,22 +205,19 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
     }
   }
 
-  // Surface results without making the user click the pill.
-  const autoOpenViews = new Set<PanelView['kind']>([
-    'picking',
-    'saving',
-    'review',
-    'no-edit',
-    'applied',
-    'error',
-  ])
-
+  // Surface results without making the user click the pill. Auto-open for any view that needs a
+  // response, and for tracking the moment a save's worth of changes shows up (0→>0).
   return {
     render(view) {
       renderBody(view)
-      if (autoOpenViews.has(view.kind) || (view.kind === 'picked' && view.changeCount > 0)) {
-        panel.hidden = false
-      }
+      const autoOpen =
+        view.kind === 'saving' ||
+        view.kind === 'preview' ||
+        view.kind === 'no-edit' ||
+        view.kind === 'applied' ||
+        view.kind === 'error' ||
+        (view.kind === 'tracking' && view.includedCount > 0)
+      if (autoOpen) panel.hidden = false
     },
     setConnection(status) {
       dot.className = `shiage-pill__dot shiage-pill__dot--${status}`

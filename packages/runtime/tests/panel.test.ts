@@ -9,25 +9,51 @@ afterEach(() => {
 })
 
 const noopCallbacks = (): PanelCallbacks => ({
-  onPick: vi.fn(),
   onSave: vi.fn(),
   onConfirm: vi.fn(),
   onCancel: vi.fn(),
+  onToggleElement: vi.fn(),
+  onToggleProperty: vi.fn(),
 })
 
-describe('createPanel', () => {
-  it('renders the picked view with an enabled Save button and a change count', () => {
+describe('createPanel — tracking view', () => {
+  it('renders one group per element with property rows and an enabled Save button', () => {
     const cb = noopCallbacks()
     const panel = createPanel(document.body, cb)
     panel.render({
-      kind: 'picked',
-      tagName: 'BUTTON',
-      sourceLoc: 'src/App.tsx:1:1',
-      changeCount: 2,
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'BUTTON',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+        {
+          sourceLoc: 'App.tsx:2:2',
+          tagName: 'H1',
+          changes: [
+            { property: 'color', oldValue: 'rgb(0, 0, 0)', newValue: 'rgb(255, 255, 255)' },
+            { property: 'font-size', oldValue: '16px', newValue: '24px' },
+          ],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 3,
     })
 
+    const groups = document.querySelectorAll('.shiage-group')
+    expect(groups).toHaveLength(2)
+    expect(groups[0]!.textContent).toContain('<button>')
+    expect(groups[0]!.textContent).toContain('App.tsx:1:1')
+    expect(groups[0]!.textContent).toContain('padding-left: 16px → 24px')
+    expect(groups[1]!.textContent).toContain('<h1>')
+    expect(groups[1]!.textContent).toContain('font-size: 16px → 24px')
+
     const save = [...document.querySelectorAll('button')].find((b) =>
-      b.textContent?.startsWith('Save 2 changes'),
+      b.textContent?.startsWith('Save 3 changes'),
     ) as HTMLButtonElement
     expect(save).toBeTruthy()
     expect(save.disabled).toBe(false)
@@ -35,56 +61,181 @@ describe('createPanel', () => {
     expect(cb.onSave).toHaveBeenCalledOnce()
   })
 
-  it('disables Save when there are no changes or no source location', () => {
+  it('shows the empty hint and hides the Save button when elements is empty', () => {
     const panel = createPanel(document.body, noopCallbacks())
-    panel.render({ kind: 'picked', tagName: 'DIV', sourceLoc: 'a:1:1', changeCount: 0 })
-    let save = [...document.querySelectorAll('button')].find((b) =>
-      b.textContent?.startsWith('Save'),
-    ) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
+    panel.render({ kind: 'tracking', elements: [], includedCount: 0 })
 
-    panel.render({ kind: 'picked', tagName: 'DIV', sourceLoc: null, changeCount: 3 })
-    expect(document.body.textContent).toContain('No source location')
-    save = [...document.querySelectorAll('button')].find((b) =>
+    expect(document.body.textContent).toContain('Edit CSS in DevTools to see changes here.')
+    expect(document.querySelectorAll('.shiage-group')).toHaveLength(0)
+    // No "Save" button rendered for the empty case (and certainly nothing enabled).
+    const anySave = [...document.querySelectorAll('button')].find((b) =>
       b.textContent?.startsWith('Save'),
-    ) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
+    )
+    expect(anySave).toBeUndefined()
   })
 
-  it('renders a review with the diff and wires Confirm/Cancel', () => {
+  it('calls onToggleElement(loc, true) when the element checkbox is unchecked', () => {
     const cb = noopCallbacks()
     const panel = createPanel(document.body, cb)
-    const diff: SourceDiff = {
-      filePath: 'src/App.tsx',
-      hunks: [
+    panel.render({
+      kind: 'tracking',
+      elements: [
         {
-          oldStart: 1,
-          newStart: 1,
-          lines: [
-            { kind: 'del', text: 'a' },
-            { kind: 'add', text: 'b' },
-          ],
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
         },
       ],
-    }
+      includedCount: 1,
+    })
+    const headBox = document
+      .querySelector('.shiage-group__head')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    headBox.checked = false
+    headBox.dispatchEvent(new Event('change'))
+    expect(cb.onToggleElement).toHaveBeenCalledWith('App.tsx:1:1', true)
+  })
+
+  it('calls onToggleProperty(loc, prop, true) when a property checkbox is unchecked', () => {
+    const cb = noopCallbacks()
+    const panel = createPanel(document.body, cb)
     panel.render({
-      kind: 'review',
-      diff,
-      warnings: ['Matched #fee to red-500'],
-      unsupported: ['display'],
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [
+            { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+            { property: 'color', oldValue: '#000', newValue: '#fff' },
+          ],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 2,
+    })
+    const props = document.querySelectorAll('.shiage-prop')
+    const colorBox = props[1]!.querySelector('input[type="checkbox"]') as HTMLInputElement
+    colorBox.checked = false
+    colorBox.dispatchEvent(new Event('change'))
+    expect(cb.onToggleProperty).toHaveBeenCalledWith('App.tsx:1:1', 'color', true)
+  })
+
+  it('flags excluded elements and properties with class names so the CSS can mute them', () => {
+    const panel = createPanel(document.body, noopCallbacks())
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [
+            { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+            { property: 'color', oldValue: '#000', newValue: '#fff' },
+          ],
+          excluded: false,
+          excludedProps: new Set(['color']),
+        },
+        {
+          sourceLoc: 'App.tsx:2:2',
+          tagName: 'H1',
+          changes: [{ property: 'font-size', oldValue: '16px', newValue: '24px' }],
+          excluded: true,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 1,
+    })
+    const groups = document.querySelectorAll('.shiage-group')
+    expect(groups[0]!.classList.contains('shiage-group--excluded')).toBe(false)
+    expect(groups[1]!.classList.contains('shiage-group--excluded')).toBe(true)
+
+    const firstGroupProps = groups[0]!.querySelectorAll('.shiage-prop')
+    expect(firstGroupProps[0]!.classList.contains('shiage-prop--excluded')).toBe(false)
+    expect(firstGroupProps[1]!.classList.contains('shiage-prop--excluded')).toBe(true)
+  })
+
+  it('disables Save when includedCount is 0 even with non-empty (all-excluded) elements', () => {
+    const panel = createPanel(document.body, noopCallbacks())
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: true,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 0,
+    })
+    const save = [...document.querySelectorAll('button')].find((b) =>
+      b.textContent?.startsWith('Save'),
+    ) as HTMLButtonElement
+    expect(save).toBeTruthy()
+    expect(save.disabled).toBe(true)
+  })
+})
+
+describe('createPanel — preview view (multi-file)', () => {
+  const mkDiff = (filePath: string, addText: string): SourceDiff => ({
+    filePath,
+    hunks: [
+      {
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          { kind: 'del', text: 'x' },
+          { kind: 'add', text: addText },
+        ],
+      },
+    ],
+  })
+
+  it('renders one diff block per file and wires Confirm/Cancel', () => {
+    const cb = noopCallbacks()
+    const panel = createPanel(document.body, cb)
+    panel.render({
+      kind: 'preview',
+      diffs: [mkDiff('src/Card.tsx', 'a'), mkDiff('src/Footer.tsx', 'b')],
+      warnings: [],
+      unsupported: [],
     })
 
-    expect(document.querySelector('.shiage-diff')).toBeTruthy()
-    expect(document.body.textContent).toContain('Matched #fee to red-500')
-    expect(document.body.textContent).toContain('Not supported in v1: display')
+    const diffNodes = document.querySelectorAll('.shiage-diff')
+    expect(diffNodes).toHaveLength(2)
+    expect(diffNodes[0]!.textContent).toContain('src/Card.tsx')
+    expect(diffNodes[1]!.textContent).toContain('src/Footer.tsx')
 
     const confirm = [...document.querySelectorAll('button')].find(
       (b) => b.textContent === 'Confirm & write',
     )!
     confirm.click()
     expect(cb.onConfirm).toHaveBeenCalledOnce()
+
+    const cancel = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Cancel')!
+    cancel.click()
+    expect(cb.onCancel).toHaveBeenCalledOnce()
   })
 
+  it('renders warnings and the unsupported notice in preview', () => {
+    const panel = createPanel(document.body, noopCallbacks())
+    panel.render({
+      kind: 'preview',
+      diffs: [mkDiff('x', 'a')],
+      warnings: ['Matched #fee to red-500'],
+      unsupported: ['display'],
+    })
+    expect(document.body.textContent).toContain('Matched #fee to red-500')
+    expect(document.body.textContent).toContain('Not supported in v1: display')
+  })
+})
+
+describe('createPanel — misc', () => {
   it('reflects connection status on the pill dot', () => {
     const panel = createPanel(document.body, noopCallbacks())
     panel.setConnection('open')
@@ -92,8 +243,56 @@ describe('createPanel', () => {
     panel.setConnection('closed')
     expect(document.querySelector('.shiage-pill__dot--closed')).toBeTruthy()
   })
+
+  it('auto-opens when a tracking view has changes; stays closed when empty', () => {
+    const panel = createPanel(document.body, noopCallbacks())
+    const panelEl = document.querySelector('.shiage-panel') as HTMLElement
+    expect(panelEl.hidden).toBe(true)
+
+    panel.render({ kind: 'tracking', elements: [], includedCount: 0 })
+    expect(panelEl.hidden).toBe(true)
+
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 1,
+    })
+    expect(panelEl.hidden).toBe(false)
+  })
+
+  it('shows the count on the pill label only when includedCount > 0', () => {
+    const panel = createPanel(document.body, noopCallbacks())
+    const pill = document.querySelector('.shiage-pill') as HTMLElement
+
+    panel.render({ kind: 'tracking', elements: [], includedCount: 0 })
+    expect(pill.textContent).not.toContain('·')
+
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'A.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 1,
+    })
+    expect(pill.textContent).toContain('Shiage · 1')
+  })
 })
 
+// `renderDiff` is unchanged in this phase — these tests pin the diff rendering behavior verbatim.
 describe('renderDiff', () => {
   it('renders a file header and +/- gutters per line', () => {
     const diff: SourceDiff = {
