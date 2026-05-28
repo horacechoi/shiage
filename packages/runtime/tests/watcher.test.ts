@@ -234,9 +234,11 @@ describe('createWatcher — redundant-reflection filtering', () => {
     watcher.stop()
   })
 
-  it('keeps a width change when no box-model property was edited', () => {
+  it('drops a non-inline width change even when no box-model property was edited', () => {
     vi.useFakeTimers()
-    // A genuine width-only edit (e.g. a stylesheet rule): nothing reflowed it, so it stands.
+    // The DevTools-docking case: a stylesheet rule resolves smaller (e.g. `100dvh` shrinking when
+    // DevTools docks) and the watcher's poll sees the new computed width — but the user never
+    // typed it into the element's `style {}` block, so we can't trust it as a deliberate edit.
     const snapshots = [snap({ width: '100px' }), snap({ width: '120px' }), snap({ width: '120px' })]
     let i = 0
     const readAll = () => snapshots[Math.min(i++, snapshots.length - 1)]!
@@ -244,8 +246,23 @@ describe('createWatcher — redundant-reflection filtering', () => {
 
     vi.advanceTimersByTime(500)
     vi.advanceTimersByTime(500)
+    expect(watcher.getCurrentChanges()).toEqual([])
+    watcher.stop()
+  })
+
+  it('keeps a width change the user authored inline, even with no box-model edit', async () => {
+    // The deliberate-edit path: typing `width: 120px` into DevTools' `element.style {}` block
+    // mutates the `style` attribute → `authoredInline` is true → kept.
+    const el = document.createElement('div')
+    el.style.width = '120px'
+    document.body.appendChild(el)
+    const watcher = createWatcher(el, { pollMs: 1_000_000 })
+
+    el.style.width = '160px'
+    await flushMutations()
+
     expect(watcher.getCurrentChanges()).toEqual([
-      { property: 'width', oldValue: '100px', newValue: '120px' },
+      { property: 'width', oldValue: '120px', newValue: '160px' },
     ])
     watcher.stop()
   })

@@ -181,10 +181,27 @@ describe('createElementTracker — redundant-reflection filtering', () => {
     expect(changes).toContainEqual({ property: 'width', oldValue: '100px', newValue: '120px' })
   })
 
-  it('keeps a width change when no box-model property was edited', () => {
-    // A genuine width-only edit (e.g. a stylesheet rule): nothing reflowed it, so it stands.
+  it('drops a width change that is not authored inline, even with no box-model edit', () => {
+    // The DevTools-docking case: a stylesheet rule resolved smaller (e.g. `min-h-screen` →
+    // `100dvh` shrinking) cascades into a width/height delta on a stamped element that the user
+    // never touched inline. We must not pin that into source as `w-[Npx]`. Inline authorship is
+    // the only deliberate-edit signal we can trust.
     const tracker = createElementTracker(
       document.createElement('div'),
+      fromSnapshots([snap({ width: '100px' }), snap({ width: '120px' })]),
+    )
+    expect(tracker.ingest(true)).toBe(true)
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+
+  it('keeps a width change when the user authored it inline (DevTools element.style box)', () => {
+    // The deliberate-edit path: the user types `width: 120px` into the `element.style {}` block in
+    // DevTools, which mutates the inline `style` attribute. `authoredInline` is true → kept.
+    const el = document.createElement('div')
+    el.style.width = '120px'
+    document.body.appendChild(el)
+    const tracker = createElementTracker(
+      el,
       fromSnapshots([snap({ width: '100px' }), snap({ width: '120px' })]),
     )
     expect(tracker.ingest(true)).toBe(true)

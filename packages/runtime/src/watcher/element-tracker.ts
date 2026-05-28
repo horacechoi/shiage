@@ -7,20 +7,18 @@
 // for the guard, and the box-model dimension-suppression in `getCurrentChanges`. The split exists
 // so a single shared poll + shared MutationObserver in the manager can drive N elements without N
 // timers — see watch-manager.ts.
-import {
-  SUPPORTED_PROPERTIES,
-  SUPPORTED_PROPERTY_LIST,
-  type SupportedProperty,
-} from '@shiage/core/supported'
+import { SUPPORTED_PROPERTY_LIST, type SupportedProperty } from '@shiage/core/supported'
 import type { PropertyChange } from '@shiage/core/protocol'
 import { valuesEqual } from './normalize'
 
 type Snapshot = Map<SupportedProperty, string>
 
-// Sizing properties whose computed value commonly shifts as a *side effect* of a box-model edit:
-// growing padding on an auto-width element widens it, so `getComputedStyle().width` changes without
-// the user touching width. We must not write that derived value back as a hardcoded `w-[Npx]` — see
-// the suppression in `getCurrentChanges`.
+// Sizing properties whose computed value commonly shifts as a *side effect* of layout — growing
+// padding on an auto-width element widens it; DevTools docking shrinks `100dvh` and every
+// `min-h-screen` element's height drops; a parent's flex layout resizes children. We must not
+// write any of that derived value back as a hardcoded `w-[Npx]` / `h-[Npx]`. The deliberate-edit
+// signal is `authoredInline`: the user explicitly set the property on the element's own `style`
+// attribute (the standard DevTools workflow for adding a property to a single element).
 const DIMENSION_PROPERTIES: ReadonlySet<string> = new Set([
   'width',
   'height',
@@ -29,13 +27,6 @@ const DIMENSION_PROPERTIES: ReadonlySet<string> = new Set([
   'max-width',
   'max-height',
 ])
-
-// True for the box-model properties (padding/margin/border-width) whose edits can reflow an
-// auto-sized element's dimensions.
-const isBoxModelEdit = (property: SupportedProperty): boolean => {
-  const group = SUPPORTED_PROPERTIES[property].group
-  return group === 'padding' || group === 'margin' || group === 'borderWidth'
-}
 
 // Box-model/gap/radius shorthands. `getComputedStyle` resolves every value to its longhands, so a
 // shorthand's computed string is just a redundant reflection of them — editing `padding-left` also
@@ -126,15 +117,15 @@ export function createElementTracker(
     element,
     ingest,
     getCurrentChanges() {
-      // If a box-model property was edited, drop any dimension change that the element didn't
-      // explicitly author — it's a reflow side effect (e.g. wider auto-box from more padding), not
-      // something to pin into source as `w-[Npx]`. A dimension the user actually set inline survives.
-      const boxModelEdited = [...confirmed.keys()].some(isBoxModelEdit)
+      // Drop every dimension change the element didn't author inline. Layout cascades it freely:
+      // a sibling's padding edit reflows it, DevTools docking shrinks `100dvh` and `min-h-screen`
+      // elements collapse, a media-query flip resizes it. None of those are user edits, and
+      // pinning them into source as `w-[Npx]` / `h-[Npx]` is the bug we keep hitting. A dimension
+      // the user explicitly typed into the `element.style {}` block in DevTools is the only
+      // signal we can trust — that survives.
       const changes: PropertyChange[] = []
       for (const [property, newValue] of confirmed) {
-        if (boxModelEdited && DIMENSION_PROPERTIES.has(property) && !authoredInline(property)) {
-          continue
-        }
+        if (DIMENSION_PROPERTIES.has(property) && !authoredInline(property)) continue
         changes.push({ property, oldValue: baseline.get(property) ?? '', newValue })
       }
       return changes
