@@ -190,6 +190,92 @@ describe('mount', () => {
     expect(sent.edits[0]!.sourceLoc).toBe('src/App.tsx:1:1')
   })
 
+  it('resetting an element clears its changes and re-renders with the reduced count', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+    const b = document.createElement('button')
+    b.setAttribute('data-shiage-loc', 'src/App.tsx:2:2')
+    b.setAttribute('class', 'p-2')
+    b.style.paddingLeft = '8px'
+    document.body.appendChild(b)
+
+    const instance = mount({ autoConnect: false })
+
+    a.style.paddingLeft = '24px'
+    b.style.paddingLeft = '16px'
+    await flushMutations()
+
+    expect(instance.manager.getAllChanges()).toHaveLength(2)
+    const groups = instance.shadow.querySelectorAll('.shiage-group')
+    expect(groups).toHaveLength(2)
+
+    // Click Reset on the first group — only that element's tracker should rebaseline; the second
+    // element's change is preserved.
+    const firstReset = groups[0]!.querySelector('.shiage-group__reset') as HTMLButtonElement
+    expect(firstReset).toBeTruthy()
+    firstReset.click()
+
+    const remaining = instance.manager.getAllChanges()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]!.sourceLoc).toBe('src/App.tsx:2:2')
+
+    // The tracking view re-renders with one group and "Save 1 change".
+    const groupsAfter = instance.shadow.querySelectorAll('.shiage-group')
+    expect(groupsAfter).toHaveLength(1)
+    const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
+      btn.textContent?.startsWith('Save 1 change'),
+    ) as HTMLButtonElement
+    expect(save).toBeTruthy()
+    expect(save.disabled).toBe(false)
+  })
+
+  it('reset drops the loc-keyed exclusions so a fresh edit starts un-excluded', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+
+    const instance = mount({ autoConnect: false })
+
+    a.style.paddingLeft = '24px'
+    await flushMutations()
+
+    // Exclude the property, then exclude the whole element — both choices are loc-keyed.
+    const propBox = instance.shadow
+      .querySelector('.shiage-prop')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    propBox.checked = false
+    propBox.dispatchEvent(new Event('change'))
+    const headBox = instance.shadow
+      .querySelector('.shiage-group__head')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    headBox.checked = false
+    headBox.dispatchEvent(new Event('change'))
+    expect(instance.shadow.querySelector('.shiage-group--excluded')).toBeTruthy()
+
+    // Reset wipes both exclusion choices along with the tracker's baseline.
+    const reset = instance.shadow.querySelector('.shiage-group__reset') as HTMLButtonElement
+    reset.click()
+
+    // No active changes anymore → no group at all → no `shiage-group--excluded` ghost.
+    expect(instance.shadow.querySelectorAll('.shiage-group')).toHaveLength(0)
+
+    // A subsequent edit on the same element re-appears un-excluded.
+    a.style.paddingLeft = '32px'
+    await flushMutations()
+    const group = instance.shadow.querySelector('.shiage-group')
+    expect(group).toBeTruthy()
+    expect(group!.classList.contains('shiage-group--excluded')).toBe(false)
+    const newHeadBox = group!.querySelector(
+      '.shiage-group__head input[type="checkbox"]',
+    ) as HTMLInputElement
+    expect(newHeadBox.checked).toBe(true)
+  })
+
   it('sends a hello with the protocol version on connect', () => {
     const instance = mount({ wsUrl: 'ws://localhost:1234', WebSocketImpl: FakeWebSocket })
     const socket = FakeWebSocket.instances[0]!

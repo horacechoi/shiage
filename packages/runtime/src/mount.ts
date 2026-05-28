@@ -84,6 +84,7 @@ export function mount(options: MountOptions = {}): ShiageInstance {
     onCancel: dismiss,
     onToggleElement: toggleElement,
     onToggleProperty: toggleProperty,
+    onResetElement: resetElement,
   })
 
   // Build the current `tracking` view by joining live manager state with the user's exclusion
@@ -151,6 +152,19 @@ export function mount(options: MountOptions = {}): ShiageInstance {
     if (set.size === 0) excludedProps.delete(sourceLoc)
     else excludedProps.set(sourceLoc, set)
     renderTracking()
+  }
+
+  // Per-element reset: discard this tracker's confirmed changes and adopt its current computed
+  // style as the new baseline, plus drop any exclusions for the loc. The element is resolved from
+  // the live `getAllChanges()` view — that's the only place the manager exposes the (loc → Element)
+  // mapping, and it's authoritative even after an HMR re-stamp. If the element is gone (e.g. it
+  // unmounted between render and click) we still re-render to drop any lingering UI state.
+  function resetElement(sourceLoc: string): void {
+    const target = manager.getAllChanges().find((e) => e.sourceLoc === sourceLoc)
+    excludedElements.delete(sourceLoc)
+    excludedProps.delete(sourceLoc)
+    if (target) manager.rebaseline(target.element)
+    else renderTracking()
   }
 
   function onMessage(message: ServerMessage): void {

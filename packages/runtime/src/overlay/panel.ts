@@ -43,6 +43,11 @@ export interface PanelCallbacks {
   onToggleElement(sourceLoc: string, excluded: boolean): void
   /** Per-property toggle: `excluded=true` drops just this property from this element. */
   onToggleProperty(sourceLoc: string, property: string, excluded: boolean): void
+  /** Discard this element's accrued changes and treat its current computed style as the new
+   * baseline — the escape hatch for ambient noise (an app className swap, a parent's cascading
+   * layout shift) the user wants to dismiss without saving. Also clears any exclusions for this
+   * loc so a fresh edit starts from a clean slate. */
+  onResetElement(sourceLoc: string): void
 }
 
 export interface Panel {
@@ -90,6 +95,9 @@ function renderGroup(re: ReviewElement, callbacks: PanelCallbacks): HTMLElement 
     checkbox(!re.excluded, (checked) => callbacks.onToggleElement(re.sourceLoc, !checked)),
     el('span', 'shiage-title', `<${re.tagName.toLowerCase()}>`),
     el('span', 'shiage-loc', re.sourceLoc),
+    // Reset is per-element: rebaselines this tracker only, so unrelated edits on other elements
+    // in the batch are preserved. Lives at the right of the head via `margin-left: auto`.
+    button('Reset', 'shiage-group__reset', () => callbacks.onResetElement(re.sourceLoc)),
   )
   group.append(head)
 

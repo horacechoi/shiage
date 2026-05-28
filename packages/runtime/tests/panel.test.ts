@@ -14,6 +14,7 @@ const noopCallbacks = (): PanelCallbacks => ({
   onCancel: vi.fn(),
   onToggleElement: vi.fn(),
   onToggleProperty: vi.fn(),
+  onResetElement: vi.fn(),
 })
 
 describe('createPanel — tracking view', () => {
@@ -96,6 +97,40 @@ describe('createPanel — tracking view', () => {
     headBox.checked = false
     headBox.dispatchEvent(new Event('change'))
     expect(cb.onToggleElement).toHaveBeenCalledWith('App.tsx:1:1', true)
+  })
+
+  it('calls onResetElement(loc) when the per-group Reset button is clicked', () => {
+    const cb = noopCallbacks()
+    const panel = createPanel(document.body, cb)
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+        {
+          sourceLoc: 'App.tsx:2:2',
+          tagName: 'H1',
+          changes: [{ property: 'font-size', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 2,
+    })
+    const groups = document.querySelectorAll('.shiage-group')
+    const secondReset = groups[1]!.querySelector('.shiage-group__reset') as HTMLButtonElement
+    expect(secondReset).toBeTruthy()
+    expect(secondReset.textContent).toBe('Reset')
+    secondReset.click()
+    expect(cb.onResetElement).toHaveBeenCalledWith('App.tsx:2:2')
+    // Reset is independent of the exclusion toggles — neither fires on click.
+    expect(cb.onToggleElement).not.toHaveBeenCalled()
+    expect(cb.onToggleProperty).not.toHaveBeenCalled()
   })
 
   it('calls onToggleProperty(loc, prop, true) when a property checkbox is unchecked', () => {
