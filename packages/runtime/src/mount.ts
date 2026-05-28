@@ -197,8 +197,12 @@ export function mount(options: MountOptions = {}): ShiageInstance {
 
   // ── The watch manager: discovers stamped elements at construction (silently) and re-syncs on
   // every DOM mutation. `onChange` is debounced naturally because the manager fires it at most
-  // once per tick of its shared poll / per MutationObserver batch. ──
-  const manager = createWatchManager({ onChange: renderTracking })
+  // once per tick of its shared poll / per MutationObserver batch. `settleMs` absorbs the
+  // layout/style-load deltas that show up if a tracker is created mid-render (initial mount, but
+  // also each HMR-injected stamped element) — ~2 frames is the conventional "layout settled"
+  // budget; any actual user edit during that window is preserved (the rebaseline is skipped if
+  // the tracker already saw a confirmed change). ──
+  const manager = createWatchManager({ onChange: renderTracking, settleMs: 32 })
 
   // ── WS client ──
   let ws: WsClient | null = null

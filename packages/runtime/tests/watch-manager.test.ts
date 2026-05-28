@@ -404,6 +404,74 @@ describe('createWatchManager — rebaseline / stop', () => {
   })
 })
 
+describe('createWatchManager — settle (deferred baseline absorbs layout-settling deltas)', () => {
+  it('with settleMs > 0, re-baselines a freshly-added tracker after the delay', () => {
+    vi.useFakeTimers()
+    let tracker!: ReturnType<typeof fakeTracker>
+    const manager = createWatchManager({
+      pollMs: 1_000_000,
+      settleMs: 32,
+      createTracker: (el) => {
+        tracker = fakeTracker()
+        tracker.element = el
+        return tracker as unknown as ElementTracker
+      },
+    })
+
+    const el = stamped('A.tsx:1:1')
+    document.body.appendChild(el)
+    manager.sync() // synchronously trigger the tracker creation + scheduleSettle
+
+    expect(tracker.rebaselineCalls).toBe(0)
+    vi.advanceTimersByTime(32)
+    expect(tracker.rebaselineCalls).toBe(1)
+    manager.stop()
+  })
+
+  it('skips the deferred rebaseline if the tracker already has confirmed changes', () => {
+    vi.useFakeTimers()
+    let tracker!: ReturnType<typeof fakeTracker>
+    const manager = createWatchManager({
+      pollMs: 1_000_000,
+      settleMs: 32,
+      createTracker: (el) => {
+        tracker = fakeTracker({
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+        })
+        tracker.element = el
+        return tracker as unknown as ElementTracker
+      },
+    })
+
+    document.body.appendChild(stamped('A.tsx:1:1'))
+    manager.sync()
+
+    // The tracker reports a change before the settle window elapses — preserve the user's edit.
+    vi.advanceTimersByTime(32)
+    expect(tracker.rebaselineCalls).toBe(0)
+    manager.stop()
+  })
+
+  it('with default settleMs (0), no deferred rebaseline is scheduled', () => {
+    vi.useFakeTimers()
+    let tracker!: ReturnType<typeof fakeTracker>
+    const manager = createWatchManager({
+      pollMs: 1_000_000,
+      createTracker: (el) => {
+        tracker = fakeTracker()
+        tracker.element = el
+        return tracker as unknown as ElementTracker
+      },
+    })
+
+    document.body.appendChild(stamped('A.tsx:1:1'))
+    manager.sync()
+    vi.advanceTimersByTime(1000) // no settle scheduled at all
+    expect(tracker.rebaselineCalls).toBe(0)
+    manager.stop()
+  })
+})
+
 describe('createWatchManager — poll path', () => {
   it('drives every tracker with immediate=false on each tick of the shared interval', () => {
     vi.useFakeTimers()

@@ -47,6 +47,12 @@ export interface WatchManagerOptions {
   /** Tracker factory (default `createElementTracker`). Injectable for tests so a fake snapshot
    * sequence can drive the manager without happy-dom's computed-style stubs. */
   createTracker?: (el: Element) => ElementTracker
+  /** Delay (ms) before re-baselining a freshly-added tracker, to absorb the layout-settling and
+   * stylesheet-load deltas that show up if the tracker is created while the page is still
+   * rendering. The settle is skipped if the tracker already has confirmed changes by then — we
+   * preserve any edit the user managed to make during the window. Default 0 (off) for unit-test
+   * determinism; mount.ts opts in with ~32ms (~2 frames) in real browser use. */
+  settleMs?: number
 }
 
 export interface WatchManager {
@@ -70,9 +76,23 @@ export interface WatchManager {
 
 export function createWatchManager(options: WatchManagerOptions = {}): WatchManager {
   const pollMs = options.pollMs ?? 500
+  const settleMs = options.settleMs ?? 0
   const doc = options.doc ?? globalThis.document
   const createTracker = options.createTracker ?? createElementTracker
   const trackers = new Map<Element, ElementTracker>()
+
+  // After a tracker is added, the page may still be settling — stylesheets loading, layout still
+  // resolving — so its initial baseline can disagree with the post-paint computed values. The
+  // first poll would then surface that as "changes" the user never made. We absorb this by
+  // re-reading the baseline once after `settleMs`, preserving any edit the user managed to make
+  // during the window (anything that already confirmed before the timer fires is kept).
+  function scheduleSettle(tracker: ElementTracker): void {
+    if (settleMs <= 0) return
+    setTimeout(() => {
+      if (!tracker.element.isConnected) return
+      if (tracker.getCurrentChanges().length === 0) tracker.rebaseline()
+    }, settleMs)
+  }
 
   // Reconcile registry against the live `[data-shiage-loc]` set. Returns whether membership
   // changed, so the caller can fire onChange just once for a structural batch.
@@ -82,7 +102,9 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
     for (const el of doc.querySelectorAll(`[${SOURCE_LOC_ATTR}]`)) {
       live.add(el)
       if (!trackers.has(el)) {
-        trackers.set(el, createTracker(el))
+        const tracker = createTracker(el)
+        trackers.set(el, tracker)
+        scheduleSettle(tracker)
         changed = true
       }
     }
