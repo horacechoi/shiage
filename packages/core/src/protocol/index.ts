@@ -6,12 +6,16 @@
 // SourceDiff it sends back.
 
 /** Bumped when a wire shape changes incompatibly. Exchanged in `hello`/`server-info` so each side
- * can warn on a mismatch instead of failing cryptically. */
-export const PROTOCOL_VERSION = 1
+ * can warn on a mismatch instead of failing cryptically.
+ *
+ * `2`: ambient multi-element batch save. `SaveMessage.edits[]` carries one entry per tracked
+ * element (possibly across multiple files), and `DiffPreviewMessage.diffs[]` returns one entry per
+ * touched file. v1 was the single-`sourceLoc` / single-`diff` shape. */
+export const PROTOCOL_VERSION = 2
 
 /**
- * One computed-style property the runtime observed change on the picked element. `oldValue` is the
- * value snapshotted at pick time, `newValue` the current computed value (both raw `getComputedStyle`
+ * One computed-style property the runtime observed change on a tracked element. `oldValue` is the
+ * value snapshotted at baseline, `newValue` the current computed value (both raw `getComputedStyle`
  * strings, e.g. `'24px'`, `'rgb(239, 68, 68)'`); the mapper normalizes them. This is the canonical
  * definition of the shape — the CSS→Tailwind mapper re-exports it.
  */
@@ -51,19 +55,27 @@ export interface HelloMessage {
   protocolVersion: number
 }
 
-/** Request to turn the picked element's style changes into a proposed source edit. The server
- * stages (does not write) the edit and replies with `diff-preview` or `no-edit`. */
-export interface SaveMessage {
-  type: 'save'
-  /** Correlates the eventual `diff-preview`/`no-edit`/`apply-result` back to this request. */
-  saveId: string
-  /** The picked element's stamped `data-shiage-loc`, e.g. `"src/App.tsx:42:9"`. */
+/** One tracked element's contribution to a batch save: where its className lives in source, its
+ * current className text (the editor merges into this), and the property changes it has accrued. */
+export interface ElementEdit {
+  /** The element's stamped `data-shiage-loc`, e.g. `"src/App.tsx:42:9"`. */
   sourceLoc: string
   /** The element's current className string (what the editor merges into). */
   className: string
   changes: PropertyChange[]
+}
+
+/** Request to turn the runtime's accumulated style changes — possibly across multiple elements and
+ * files — into proposed source edits. The server stages (does not write) the edits and replies
+ * with `diff-preview` or `no-edit`. */
+export interface SaveMessage {
+  type: 'save'
+  /** Correlates the eventual `diff-preview`/`no-edit`/`apply-result` back to this request. */
+  saveId: string
+  /** One entry per tracked element with at least one change; may span multiple source files. */
+  edits: ElementEdit[]
   /** The live `document.documentElement` font-size in px, so the server normalizes rem against the
-   * real root size rather than assuming 16. */
+   * real root size rather than assuming 16. One value for the whole batch. */
   rootFontSizePx: number
 }
 
@@ -89,12 +101,15 @@ export interface ServerInfoMessage {
   protocolVersion: number
 }
 
-/** The staged edit for a `save`, awaiting the user's confirm. `warnings` surfaces non-blocking
- * notes (e.g. color snapping); `unsupported` lists properties that couldn't be mapped. */
+/** The staged edits for a `save`, awaiting the user's confirm. One `SourceDiff` per touched file:
+ * multiple elements in the same file collapse into one diff with multiple hunks; elements in
+ * different files yield separate entries. `warnings` surfaces non-blocking notes (e.g. color
+ * snapping, per-element failures the batch skipped over); `unsupported` lists properties that
+ * couldn't be mapped anywhere in the batch. */
 export interface DiffPreviewMessage {
   type: 'diff-preview'
   saveId: string
-  diff: SourceDiff
+  diffs: SourceDiff[]
   warnings: string[]
   unsupported: string[]
 }

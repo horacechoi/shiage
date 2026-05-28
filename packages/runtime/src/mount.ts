@@ -136,12 +136,19 @@ export function mount(options: MountOptions = {}): ShiageInstance {
     if (changes.length === 0) return
     currentSaveId = genSaveId()
     const rootFontSizePx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    // Phase-A stopgap: the single-element picker flow sends a one-entry batch under the new
+    // protocol shape. Phase C replaces this whole orchestrator with the ambient watch manager
+    // and a real multi-element batch.
     ws.send({
       type: 'save',
       saveId: currentSaveId,
-      sourceLoc: pickedLoc,
-      className: pickedElement.getAttribute('class') ?? '',
-      changes,
+      edits: [
+        {
+          sourceLoc: pickedLoc,
+          className: pickedElement.getAttribute('class') ?? '',
+          changes,
+        },
+      ],
       rootFontSizePx,
     })
     panel.render({ kind: 'saving' })
@@ -170,9 +177,12 @@ export function mount(options: MountOptions = {}): ShiageInstance {
         break
       case 'diff-preview':
         if (message.saveId !== currentSaveId) return
+        // Phase-A stopgap: the single-element flow shows the first (and only) diff. Phase C's
+        // panel rewrite will render all `diffs` as separate file blocks. A `diff-preview` reply
+        // is only sent when at least one file was staged, so `diffs[0]` is always defined here.
         panel.render({
           kind: 'review',
-          diff: message.diff,
+          diff: message.diffs[0]!,
           warnings: message.warnings,
           unsupported: message.unsupported,
         })

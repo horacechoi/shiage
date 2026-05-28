@@ -22,6 +22,7 @@ import {
   type ClientMessage,
   type SaveMessage,
   type ServerMessage,
+  type SourceDiff,
 } from '../protocol'
 
 /** What the save router needs from the host plugin, fetched fresh per message. */
@@ -37,15 +38,16 @@ export interface ProtocolHandler {
   handle(message: ClientMessage, send: (message: ServerMessage) => void): void
 }
 
-/** A previewed-but-unwritten edit, held between `save` and the user's `apply`. */
-interface StagedEdit {
+/** One file's previewed-but-unwritten content, held between `save` and the user's `apply`. A batch
+ * save may stage several of these — one per touched file — under a single saveId. */
+interface StagedFile {
   absPath: string
   code: string
 }
 
 /** Build the protocol handler. `getContext` is the live source of project root + theme/lookup. */
 export function wireProtocol(getContext: () => ProtocolContext): ProtocolHandler {
-  const staged = new Map<string, StagedEdit>()
+  const staged = new Map<string, StagedFile[]>()
 
   return {
     handle(message, send) {
@@ -67,67 +69,122 @@ export function wireProtocol(getContext: () => ProtocolContext): ProtocolHandler
   }
 }
 
+/** A batch save can carry edits for many elements across many files. We group by file so each file
+ * is read exactly once, then thread the rewritten `code` through successive `editJsxSource` calls
+ * within the file — this is required for correctness: two elements sharing a file (the card's
+ * heading and button, say) would otherwise each be staged as a from-original edit, and the second
+ * apply would clobber the first. Per-element failure is non-fatal: a missing loc or unsupported
+ * className shape is reported as a warning and the batch carries on. Only when *nothing* across
+ * the whole batch was writable do we reply `no-edit`. */
 function handleSave(
   message: SaveMessage,
   context: ProtocolContext,
-  staged: Map<string, StagedEdit>,
+  staged: Map<string, StagedFile[]>,
   send: (message: ServerMessage) => void,
 ): void {
   const noEdit = (reason: string): void => send({ type: 'no-edit', saveId: message.saveId, reason })
+  const warnings: string[] = []
+  const unsupported: string[] = []
 
-  const loc = parseSourceLoc(message.sourceLoc)
-  if (!loc) return noEdit(`Malformed source location "${message.sourceLoc}".`)
-
-  const edits = mapChangesToClassEdits(
-    message.changes,
-    message.className,
-    context.lookup,
-    context.themeSource,
-  )
-  if (edits.add.length === 0 && edits.remove.length === 0) {
-    return noEdit(
-      edits.unsupported.length > 0
-        ? `No Tailwind class for: ${edits.unsupported.join(', ')}.`
-        : 'No changes to save.',
-    )
+  // 1. Group every parsable edit by its absolute file path, preserving each one's loc.
+  interface PendingItem {
+    loc: { line: number; column: number }
+    edit: SaveMessage['edits'][number]
+  }
+  interface PendingFile {
+    relPath: string
+    absPath: string
+    items: PendingItem[]
+  }
+  const byFile = new Map<string, PendingFile>()
+  for (const edit of message.edits) {
+    const loc = parseSourceLoc(edit.sourceLoc)
+    if (!loc) {
+      warnings.push(`Malformed source location "${edit.sourceLoc}".`)
+      continue
+    }
+    const absPath = path.resolve(context.projectRoot, loc.relPath)
+    const group = byFile.get(absPath) ?? { relPath: loc.relPath, absPath, items: [] }
+    group.items.push({ loc: { line: loc.line, column: loc.column }, edit })
+    byFile.set(absPath, group)
   }
 
-  const absPath = path.resolve(context.projectRoot, loc.relPath)
-  let original: string
-  try {
-    original = readFileSync(absPath, 'utf8')
-  } catch {
-    return noEdit(`Couldn't read ${loc.relPath}.`)
+  const diffs: SourceDiff[] = []
+  const stagedFiles: StagedFile[] = []
+
+  // 2. Per file: read once, thread `code` through each element's edit. Sort by source position so
+  // the apply order is deterministic and predictable in logs/warnings (single-line className
+  // rewrites via magic-string don't move other elements' line/columns, so successive loc lookups
+  // against the threaded `code` remain valid).
+  for (const { relPath, absPath, items } of byFile.values()) {
+    let original: string
+    try {
+      original = readFileSync(absPath, 'utf8')
+    } catch {
+      warnings.push(`Couldn't read ${relPath}.`)
+      continue
+    }
+    items.sort((a, b) => a.loc.line - b.loc.line || a.loc.column - b.loc.column)
+
+    let code = original
+    let anyApplied = false
+    for (const { loc, edit } of items) {
+      const mapped = mapChangesToClassEdits(
+        edit.changes,
+        edit.className,
+        context.lookup,
+        context.themeSource,
+      )
+      warnings.push(...mapped.warnings)
+      unsupported.push(...mapped.unsupported)
+      if (mapped.add.length === 0 && mapped.remove.length === 0) continue
+
+      const result = editJsxSource(code, absPath, loc, { add: mapped.add, remove: mapped.remove })
+      if (result.status === 'edited') {
+        code = result.code
+        warnings.push(...result.warnings)
+        anyApplied = true
+      } else if (result.status === 'unsupported') {
+        warnings.push(`${relPath} @ ${edit.sourceLoc}: ${result.reason}`)
+      } else {
+        warnings.push(`Couldn't find the element at ${edit.sourceLoc} in ${relPath}.`)
+      }
+    }
+
+    if (anyApplied && code !== original) {
+      stagedFiles.push({ absPath, code })
+      diffs.push(buildSourceDiff(relPath, original, code))
+    }
   }
 
-  const result = editJsxSource(
-    original,
-    absPath,
-    { line: loc.line, column: loc.column },
-    { add: edits.add, remove: edits.remove },
-  )
-  if (result.status === 'not-found') {
-    return noEdit(`Couldn't find the picked element in ${loc.relPath}.`)
+  // 3. Only `no-edit` when nothing anywhere in the batch was writable — never abort mid-batch.
+  // Surface the most actionable reason we have: unsupported properties first (the mapper couldn't
+  // produce a class for them), then the first per-element warning (e.g. "couldn't find" — useful
+  // when a single edit failed), with a generic fallback for the truly empty case.
+  if (stagedFiles.length === 0) {
+    const reasons = [...new Set(unsupported)]
+    if (reasons.length > 0) return noEdit(`No Tailwind class for: ${reasons.join(', ')}.`)
+    if (warnings.length > 0) return noEdit(warnings[0]!)
+    return noEdit('No changes to save.')
   }
-  if (result.status === 'unsupported') return noEdit(result.reason)
 
-  staged.set(message.saveId, { absPath, code: result.code })
+  staged.set(message.saveId, stagedFiles)
   send({
     type: 'diff-preview',
     saveId: message.saveId,
-    diff: buildSourceDiff(loc.relPath, original, result.code),
-    warnings: [...edits.warnings, ...result.warnings],
-    unsupported: edits.unsupported,
+    diffs,
+    warnings,
+    unsupported: [...new Set(unsupported)],
   })
 }
 
 function handleApply(
   saveId: string,
-  staged: Map<string, StagedEdit>,
+  staged: Map<string, StagedFile[]>,
   send: (message: ServerMessage) => void,
 ): void {
-  const edit = staged.get(saveId)
-  if (!edit) {
+  const files = staged.get(saveId)
+  if (!files) {
     send({
       type: 'apply-result',
       saveId,
@@ -137,7 +194,11 @@ function handleApply(
     return
   }
   try {
-    writeFileSync(edit.absPath, edit.code, 'utf8')
+    // Multi-file write is best-effort sequential: if file N throws after file N-1 wrote, the disk
+    // is left in a partial state and the user re-saves. The transactional alternative (write to a
+    // tempdir then rename) buys little for a dev-only tool and complicates rollback. Note this as
+    // an accepted v1 limitation.
+    for (const file of files) writeFileSync(file.absPath, file.code, 'utf8')
     staged.delete(saveId)
     send({ type: 'apply-result', saveId, success: true })
   } catch (err) {

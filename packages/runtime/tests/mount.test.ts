@@ -126,9 +126,13 @@ describe('mount', () => {
     expect(save).toEqual({
       type: 'save',
       saveId: 'save-1',
-      sourceLoc: 'src/App.tsx:10:5',
-      className: 'p-4',
-      changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+      edits: [
+        {
+          sourceLoc: 'src/App.tsx:10:5',
+          className: 'p-4',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+        },
+      ],
       rootFontSizePx: 16,
     })
   })
@@ -138,7 +142,7 @@ describe('mount', () => {
     const socket = FakeWebSocket.instances[0]!
     socket.open()
     const hello = socket.parsedSent().find((m) => m.type === 'hello')
-    expect(hello).toMatchObject({ type: 'hello', protocolVersion: 1 })
+    expect(hello).toMatchObject({ type: 'hello', protocolVersion: 2 })
     instance.unmount()
   })
 })
