@@ -455,8 +455,9 @@ describe('mount', () => {
     // "DevTools" inline edit) restored.
     expect(b.style.getPropertyValue('padding-left')).toBe('16px')
     expect(b.style.getPropertyPriority('padding-left')).toBe('')
-    // Panel transitioned to applied view.
-    expect(instance.shadow.querySelector('.shiage-body')!.textContent).toContain('Saved ✓')
+    // Panel transitioned to applied view (icon-prefixed title — see panel.ts ICONS.check).
+    expect(instance.shadow.querySelector('.shiage-body')!.textContent).toContain('Saved')
+    expect(instance.shadow.querySelector('.shiage-title-icon svg')).toBeTruthy()
   })
 
   it('apply-result failure preserves holds, snapshots, and exclusions for retry', async () => {

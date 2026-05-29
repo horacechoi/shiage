@@ -125,7 +125,8 @@ describe('createPanel — tracking view', () => {
     const groups = document.querySelectorAll('.shiage-group')
     const secondRemove = groups[1]!.querySelector('.shiage-group__remove') as HTMLButtonElement
     expect(secondRemove).toBeTruthy()
-    expect(secondRemove.textContent).toBe('Remove')
+    // The button is icon-only after the design refresh; the accessible name lives on aria-label.
+    expect(secondRemove.getAttribute('aria-label')).toBe('Remove')
     secondRemove.click()
     expect(cb.onRemoveElement).toHaveBeenCalledWith('App.tsx:2:2')
     // Remove is independent of the exclusion toggles — neither fires on click.
@@ -344,12 +345,13 @@ describe('createPanel — misc', () => {
     expect(panelEl.hidden).toBe(false)
   })
 
-  it('shows the count on the pill label only when includedCount > 0', () => {
+  it('reveals the pill count badge only when includedCount > 0', () => {
     const panel = createPanel(document.body, noopCallbacks())
-    const pill = document.querySelector('.shiage-pill') as HTMLElement
+    const badge = document.querySelector('.shiage-pill__badge') as HTMLElement
 
     panel.render({ kind: 'tracking', elements: [], includedCount: 0 })
-    expect(pill.textContent).not.toContain('·')
+    expect(badge.hidden).toBe(true)
+    expect(badge.textContent).toBe('')
 
     panel.render({
       kind: 'tracking',
@@ -364,7 +366,8 @@ describe('createPanel — misc', () => {
       ],
       includedCount: 1,
     })
-    expect(pill.textContent).toContain('Shiage · 1')
+    expect(badge.hidden).toBe(false)
+    expect(badge.textContent).toBe('1')
   })
 })
 

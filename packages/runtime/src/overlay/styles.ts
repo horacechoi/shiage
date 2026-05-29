@@ -20,106 +20,246 @@ export const OVERLAY_CSS = `
   gap: 8px;
 }
 
+/* ── Pill ──
+   40×40 icon button. The connection dot is preserved (smaller, bottom-right corner) so the WS
+   status is still visible at a glance; the count badge sits top-right and appears when the
+   tracker has unsaved changes. */
 .shiage-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
   border: none;
   border-radius: 9999px;
-  background: #111827;
-  color: #f9fafb;
+  background: #1a1a1a;
+  color: #ffffff;
   font: inherit;
-  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2);
   user-select: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.shiage-pill:hover { background: #1f2937; }
+.shiage-pill:hover { background: #2a2a2a; }
+.shiage-pill__icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  color: #ffffff;
+}
+.shiage-pill__icon svg { width: 100%; height: 100%; display: block; }
 .shiage-pill__dot {
-  width: 8px;
-  height: 8px;
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 9999px;
   background: #6b7280;
+  border: 1px solid #1a1a1a;
 }
 .shiage-pill__dot--open { background: #34d399; }
 .shiage-pill__dot--connecting { background: #fbbf24; }
 .shiage-pill__dot--closed { background: #f87171; }
+.shiage-pill__badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.shiage-pill__badge[hidden] { display: none; }
 
+/* ── Panel ──
+   320px-wide column. Title + groups + button are spaced 16px apart by the body's gap; inside
+   a title-section the title and its subtitle are spaced 8px so they stay paired visually. */
 .shiage-panel {
   width: 320px;
   max-height: 70vh;
   overflow: auto;
-  background: #0b1220;
-  border: 1px solid #1f2937;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  background: #1a1a1a;
+  border-radius: 16px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+  box-sizing: border-box;
 }
 .shiage-panel[hidden] { display: none; }
 
-.shiage-title { font-weight: 700; color: #f9fafb; }
-.shiage-muted { color: #9ca3af; }
+.shiage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.shiage-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.shiage-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.shiage-title-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: #ffffff;
+}
+.shiage-title-icon svg { width: 100%; height: 100%; display: block; }
+
+.shiage-title {
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #ffffff;
+}
+.shiage-muted {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #a4a4a4;
+}
 .shiage-loc {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+  line-height: 14px;
   color: #93c5fd;
   word-break: break-all;
 }
 
+/* ── Buttons ──
+   Primary = white on black (Confirm, Save, Done). Secondary = transparent with a subtle border
+   and gray text (Cancel, Back). The narrow modifier is for the terminal states (no-edit, error)
+   where the design pins the button to 140px at the left edge. */
 .shiage-btn {
   appearance: none;
-  border: 1px solid #374151;
+  border: 1px solid #444444;
   border-radius: 8px;
-  background: #1f2937;
-  color: #f9fafb;
+  background: transparent;
+  color: #a1a1a1;
   font: inherit;
-  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 500;
   padding: 8px 12px;
   cursor: pointer;
   text-align: center;
+  box-sizing: border-box;
 }
-.shiage-btn:hover:not(:disabled) { background: #374151; }
+.shiage-btn:hover:not(:disabled) { background: #2a2a2a; color: #f9fafb; }
 .shiage-btn:disabled { opacity: 0.5; cursor: default; }
-.shiage-btn--primary { background: #2563eb; border-color: #2563eb; }
-.shiage-btn--primary:hover:not(:disabled) { background: #1d4ed8; }
-.shiage-btn-row { display: flex; gap: 8px; }
+.shiage-btn--primary {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+.shiage-btn--primary:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #e5e7eb;
+  color: #000000;
+}
+.shiage-btn--narrow { width: 140px; align-self: flex-start; }
+
+/* Top-level standalone (non-row) buttons span the panel width except when narrow. */
+.shiage-body > .shiage-btn:not(.shiage-btn--narrow) { width: 100%; }
+
+.shiage-btn-row { display: flex; gap: 8px; width: 100%; }
 .shiage-btn-row .shiage-btn { flex: 1; }
 
-.shiage-warn { color: #fbbf24; font-size: 12px; }
+.shiage-warn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.shiage-warn {
+  color: #fbbf24;
+  font-size: 12px;
+  line-height: 16px;
+}
 .shiage-error { color: #f87171; }
 
+/* ── Group cards (tracking view) ──
+   One per element. Head row: checkbox + tag + loc on the left, trash-icon Remove on the right.
+   Property rows are indented under the head and use a monospace font. */
+.shiage-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
 .shiage-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 8px 10px;
-  border: 1px solid #1f2937;
+  border: 1px solid #2a2a2a;
   border-radius: 8px;
-  background: #0b1220;
+  background: #101010;
+  box-sizing: border-box;
 }
-.shiage-group--excluded { opacity: 0.55; }
-.shiage-group__head { display: flex; align-items: center; gap: 8px; }
-.shiage-group__head .shiage-title { font-weight: 600; }
-.shiage-group__head .shiage-loc { font-size: 11px; }
+.shiage-group--excluded { opacity: 0.4; }
+.shiage-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.shiage-group__head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.shiage-group__head .shiage-title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  color: #f9fafb;
+}
 
 .shiage-group__remove {
   appearance: none;
-  margin-left: auto;
-  border: 1px solid #1f2937;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 1px solid #444444;
   border-radius: 6px;
   background: transparent;
-  color: #9ca3af;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
+  color: #a1a1a1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
-.shiage-group__remove:hover { background: #1f2937; color: #f9fafb; }
+.shiage-group__remove:hover { background: #2a2a2a; color: #f9fafb; }
+.shiage-group__remove .shiage-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+}
+.shiage-group__remove .shiage-icon svg { width: 100%; height: 100%; display: block; }
 
 .shiage-prop {
   display: flex;
@@ -127,10 +267,11 @@ export const OVERLAY_CSS = `
   gap: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+  line-height: 16px;
   color: #d1d5db;
   padding-left: 20px;
 }
-.shiage-prop--excluded { opacity: 0.5; text-decoration: line-through; }
+.shiage-prop--excluded { opacity: 0.4; }
 
 .shiage-check {
   accent-color: #2563eb;
@@ -140,7 +281,11 @@ export const OVERLAY_CSS = `
   cursor: pointer;
   margin: 0;
 }
+.shiage-group__head .shiage-check { width: 16px; height: 16px; }
 
+/* ── Picker highlight ──
+   The element-picker draws a translucent rectangle over the hovered/picked element. Unchanged
+   from the previous design. */
 .shiage-highlight {
   position: fixed;
   pointer-events: none;
@@ -151,30 +296,47 @@ export const OVERLAY_CSS = `
   border-radius: 2px;
 }
 
+/* ── Diff blocks (preview view) ──
+   One block per SourceDiff: a file header (monospace, black background) followed by add/del
+   lines with colored gutters. The container's overflow-clip and rounded corners hide the lines
+   that bleed up against the edges. */
+.shiage-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
 .shiage-diff {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  background: #020617;
-  border: 1px solid #1f2937;
+  background: #101010;
+  border: 1px solid #2a2a2a;
   border-radius: 8px;
   overflow: hidden;
 }
 .shiage-diff__file {
   padding: 6px 10px;
-  background: #111827;
-  color: #93c5fd;
-  border-bottom: 1px solid #1f2937;
+  background: #000000;
+  color: #a1a1a1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
   word-break: break-all;
 }
-.shiage-diff__line { display: flex; white-space: pre-wrap; }
+.shiage-diff__line {
+  display: flex;
+  white-space: pre-wrap;
+  padding: 1px 0;
+  line-height: 16px;
+}
 .shiage-diff__gutter {
-  width: 1.5em;
+  width: 18px;
   flex: none;
   text-align: center;
   color: #6b7280;
   user-select: none;
 }
-.shiage-diff__text { flex: 1; word-break: break-all; }
+.shiage-diff__text { flex: 1; color: #d1d5db; word-break: break-all; }
 .shiage-diff__line--add { background: rgba(34, 197, 94, 0.14); }
 .shiage-diff__line--add .shiage-diff__gutter { color: #4ade80; }
 .shiage-diff__line--del { background: rgba(239, 68, 68, 0.14); }
