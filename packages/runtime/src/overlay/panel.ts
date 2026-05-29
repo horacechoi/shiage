@@ -337,18 +337,30 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
   }
 
   // Surface results without making the user click the pill. Auto-open for any view that needs a
-  // response, and for tracking the moment a save's worth of changes shows up (0→>0).
+  // response, and for tracking *the moment a save's worth of changes first shows up* — i.e. the
+  // 0→>0 edge, not every subsequent re-render. Without this guard, a user who explicitly
+  // collapses the panel after one batch would have it pop back open on the very next tracker tick
+  // (and the "default - with changes" Figma state — panel closed, badge visible — would be
+  // unreachable in practice).
+  let lastTrackingIncludedCount = 0
   return {
     render(view) {
       renderBody(view)
+      const trackingTransitionedToNonZero =
+        view.kind === 'tracking' &&
+        view.includedCount > 0 &&
+        lastTrackingIncludedCount === 0
       const autoOpen =
         view.kind === 'saving' ||
         view.kind === 'preview' ||
         view.kind === 'no-edit' ||
         view.kind === 'applied' ||
         view.kind === 'error' ||
-        (view.kind === 'tracking' && view.includedCount > 0)
+        trackingTransitionedToNonZero
       if (autoOpen) panel.hidden = false
+      // Track tracking's count for next-render edge detection. Non-tracking views reset the edge
+      // anchor so a return to tracking-with-changes auto-opens again (e.g. after `applied`).
+      lastTrackingIncludedCount = view.kind === 'tracking' ? view.includedCount : 0
     },
     setConnection(status) {
       dot.className = `shiage-pill__dot shiage-pill__dot--${status}`

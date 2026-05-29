@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { createPanel, type PanelCallbacks } from '../src/overlay/panel'
+import { createPanel, type PanelCallbacks, type PanelView } from '../src/overlay/panel'
 import { renderDiff } from '../src/diff/render'
 import type { SourceDiff } from '@shiage/core/protocol'
 
@@ -319,6 +319,46 @@ describe('createPanel — misc', () => {
     expect(document.querySelector('.shiage-pill__dot--open')).toBeTruthy()
     panel.setConnection('closed')
     expect(document.querySelector('.shiage-pill__dot--closed')).toBeTruthy()
+  })
+
+  it('does not re-open after the user collapses a tracking-with-changes panel', () => {
+    // Canvas 16:77 "default - with changes" documents this: badge visible on the pill, panel
+    // closed. Only reachable if subsequent tracking renders DON'T re-fire the auto-open rule.
+    const panel = createPanel(document.body, noopCallbacks())
+    const panelEl = document.querySelector('.shiage-panel') as HTMLElement
+    const oneEdit: PanelView = {
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [{ property: 'padding-left', oldValue: '16px', newValue: '24px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 1,
+    }
+    panel.render(oneEdit)
+    expect(panelEl.hidden).toBe(false)
+    // User manually closes the panel (clicks the pill / collapses it).
+    panelEl.hidden = true
+    // Another tracker update arrives with changes still present — auto-open must NOT fire.
+    panel.render({
+      ...oneEdit,
+      elements: [
+        ...oneEdit.elements,
+        {
+          sourceLoc: 'App.tsx:2:2',
+          tagName: 'BUTTON',
+          changes: [{ property: 'margin-top', oldValue: '0px', newValue: '8px' }],
+          excluded: false,
+          excludedProps: new Set(),
+        },
+      ],
+      includedCount: 2,
+    })
+    expect(panelEl.hidden).toBe(true)
   })
 
   it('auto-opens when a tracking view has changes; stays closed when empty', () => {
