@@ -14,7 +14,7 @@ const noopCallbacks = (): PanelCallbacks => ({
   onCancel: vi.fn(),
   onToggleElement: vi.fn(),
   onToggleProperty: vi.fn(),
-  onResetElement: vi.fn(),
+  onRemoveElement: vi.fn(),
 })
 
 describe('createPanel — tracking view', () => {
@@ -99,7 +99,7 @@ describe('createPanel — tracking view', () => {
     expect(cb.onToggleElement).toHaveBeenCalledWith('App.tsx:1:1', true)
   })
 
-  it('calls onResetElement(loc) when the per-group Reset button is clicked', () => {
+  it('calls onRemoveElement(loc) when the per-group Remove button is clicked', () => {
     const cb = noopCallbacks()
     const panel = createPanel(document.body, cb)
     panel.render({
@@ -123,12 +123,12 @@ describe('createPanel — tracking view', () => {
       includedCount: 2,
     })
     const groups = document.querySelectorAll('.shiage-group')
-    const secondReset = groups[1]!.querySelector('.shiage-group__reset') as HTMLButtonElement
-    expect(secondReset).toBeTruthy()
-    expect(secondReset.textContent).toBe('Reset')
-    secondReset.click()
-    expect(cb.onResetElement).toHaveBeenCalledWith('App.tsx:2:2')
-    // Reset is independent of the exclusion toggles — neither fires on click.
+    const secondRemove = groups[1]!.querySelector('.shiage-group__remove') as HTMLButtonElement
+    expect(secondRemove).toBeTruthy()
+    expect(secondRemove.textContent).toBe('Remove')
+    secondRemove.click()
+    expect(cb.onRemoveElement).toHaveBeenCalledWith('App.tsx:2:2')
+    // Remove is independent of the exclusion toggles — neither fires on click.
     expect(cb.onToggleElement).not.toHaveBeenCalled()
     expect(cb.onToggleProperty).not.toHaveBeenCalled()
   })
@@ -191,6 +191,47 @@ describe('createPanel — tracking view', () => {
     const firstGroupProps = groups[0]!.querySelectorAll('.shiage-prop')
     expect(firstGroupProps[0]!.classList.contains('shiage-prop--excluded')).toBe(false)
     expect(firstGroupProps[1]!.classList.contains('shiage-prop--excluded')).toBe(true)
+  })
+
+  it('renders a snapshot-only group when every change comes from excludedProps', () => {
+    // Simulates the panel shape that mount.ts builds when every change on an element has been
+    // per-row excluded and the tracker has therefore auto-cleared them — `changes` is sourced
+    // entirely from snapshots, with every property in displayedExcludedProps. The panel should
+    // still render the group, every row struck, every row's checkbox unchecked, the group head
+    // NOT in --excluded (the element-level exclusion is independent).
+    const cb = noopCallbacks()
+    const panel = createPanel(document.body, cb)
+    panel.render({
+      kind: 'tracking',
+      elements: [
+        {
+          sourceLoc: 'App.tsx:1:1',
+          tagName: 'DIV',
+          changes: [
+            { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+            { property: 'color', oldValue: '#000', newValue: '#fff' },
+          ],
+          excluded: false,
+          excludedProps: new Set(['padding-left', 'color']),
+        },
+      ],
+      includedCount: 0,
+    })
+    const groups = document.querySelectorAll('.shiage-group')
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.classList.contains('shiage-group--excluded')).toBe(false)
+    const rows = groups[0]!.querySelectorAll('.shiage-prop')
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.classList.contains('shiage-prop--excluded')).toBe(true)
+      const box = row.querySelector('input[type="checkbox"]') as HTMLInputElement
+      expect(box.checked).toBe(false)
+    }
+    // Re-ticking a snapshot row calls back with excluded=false (mount.ts then releases the hold).
+    const firstBox = rows[0]!.querySelector('input[type="checkbox"]') as HTMLInputElement
+    firstBox.checked = true
+    firstBox.dispatchEvent(new Event('change'))
+    expect(cb.onToggleProperty).toHaveBeenCalledWith('App.tsx:1:1', 'padding-left', false)
   })
 
   it('disables Save when includedCount is 0 even with non-empty (all-excluded) elements', () => {

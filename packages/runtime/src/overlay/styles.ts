@@ -106,7 +106,7 @@ export const OVERLAY_CSS = `
 .shiage-group__head .shiage-title { font-weight: 600; }
 .shiage-group__head .shiage-loc { font-size: 11px; }
 
-.shiage-group__reset {
+.shiage-group__remove {
   appearance: none;
   margin-left: auto;
   border: 1px solid #1f2937;
@@ -119,7 +119,7 @@ export const OVERLAY_CSS = `
   padding: 2px 8px;
   cursor: pointer;
 }
-.shiage-group__reset:hover { background: #1f2937; color: #f9fafb; }
+.shiage-group__remove:hover { background: #1f2937; color: #f9fafb; }
 
 .shiage-prop {
   display: flex;

@@ -190,7 +190,7 @@ describe('mount', () => {
     expect(sent.edits[0]!.sourceLoc).toBe('src/App.tsx:1:1')
   })
 
-  it('resetting an element clears its changes and re-renders with the reduced count', async () => {
+  it('Remove pins all changes to baseline and removes the group from the panel', async () => {
     const a = document.createElement('div')
     a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
     a.setAttribute('class', 'p-4')
@@ -207,24 +207,27 @@ describe('mount', () => {
     a.style.paddingLeft = '24px'
     b.style.paddingLeft = '16px'
     await flushMutations()
-
     expect(instance.manager.getAllChanges()).toHaveLength(2)
+
+    // Click Remove on the first group.
     const groups = instance.shadow.querySelectorAll('.shiage-group')
-    expect(groups).toHaveLength(2)
+    const firstRemove = groups[0]!.querySelector('.shiage-group__remove') as HTMLButtonElement
+    firstRemove.click()
+    await flushMutations()
 
-    // Click Reset on the first group — only that element's tracker should rebaseline; the second
-    // element's change is preserved.
-    const firstReset = groups[0]!.querySelector('.shiage-group__reset') as HTMLButtonElement
-    expect(firstReset).toBeTruthy()
-    firstReset.click()
+    // The hold pinned padding-left back to 16px !important inline.
+    expect(a.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+    // Tracker no longer reports the removed element (rebaselined + auto-cleared by the override).
+    const live = instance.manager.getAllChanges()
+    expect(live.find((e) => e.sourceLoc === 'src/App.tsx:1:1')).toBeUndefined()
 
-    const remaining = instance.manager.getAllChanges()
-    expect(remaining).toHaveLength(1)
-    expect(remaining[0]!.sourceLoc).toBe('src/App.tsx:2:2')
-
-    // The tracking view re-renders with one group and "Save 1 change".
-    const groupsAfter = instance.shadow.querySelectorAll('.shiage-group')
+    // Only the OTHER group remains in the panel — the removed group is gone.
+    const groupsAfter = [...instance.shadow.querySelectorAll('.shiage-group')]
     expect(groupsAfter).toHaveLength(1)
+    expect(groupsAfter[0]!.textContent).toContain('src/App.tsx:2:2')
+    expect(groupsAfter[0]!.textContent).not.toContain('src/App.tsx:1:1')
+    // Save button reflects only the surviving element's count.
     const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
       btn.textContent?.startsWith('Save 1 change'),
     ) as HTMLButtonElement
@@ -232,7 +235,7 @@ describe('mount', () => {
     expect(save.disabled).toBe(false)
   })
 
-  it('reset drops the loc-keyed exclusions so a fresh edit starts un-excluded', async () => {
+  it('Remove preview is sticky: a host-app inline wipe is re-pinned on the next render tick', async () => {
     const a = document.createElement('div')
     a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
     a.setAttribute('class', 'p-4')
@@ -244,36 +247,353 @@ describe('mount', () => {
     a.style.paddingLeft = '24px'
     await flushMutations()
 
-    // Exclude the property, then exclude the whole element — both choices are loc-keyed.
+    const remove = instance.shadow.querySelector('.shiage-group__remove') as HTMLButtonElement
+    remove.click()
+    await flushMutations()
+    expect(a.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+
+    // Simulate React / HMR clearing the inline override on the live element. Any subsequent
+    // render tick should detect the drift and re-pin via reapplyHolds.
+    a.style.removeProperty('padding-left')
+    expect(a.style.getPropertyValue('padding-left')).toBe('')
+
+    // Drive a render — anything that triggers onChange will do; mutate an unrelated stamped
+    // element so the structural observer fires.
+    const trigger = document.createElement('span')
+    trigger.setAttribute('data-shiage-loc', 'src/App.tsx:9:9')
+    document.body.appendChild(trigger)
+    await flushMutations()
+
+    expect(a.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+  })
+
+  it('per-property hold: unticking pins to baseline + struck row; re-ticking restores the DevTools edit', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px' // baseline
+    document.body.appendChild(a)
+
+    const instance = mount({ autoConnect: false })
+
+    // The "DevTools edit": inline 24px.
+    a.style.paddingLeft = '24px'
+    await flushMutations()
+
+    // Untick the property row.
     const propBox = instance.shadow
       .querySelector('.shiage-prop')!
       .querySelector('input[type="checkbox"]') as HTMLInputElement
     propBox.checked = false
     propBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+
+    // Override is in place at baseline.
+    expect(a.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+    // Snapshot row survives the tracker's auto-clear.
+    const row = instance.shadow.querySelector('.shiage-prop')!
+    expect(row.classList.contains('shiage-prop--excluded')).toBe(true)
+    expect(row.textContent).toContain('padding-left: 16px → 24px')
+
+    // Re-tick the row → release the hold → restore the captured inline edit (24px, no priority).
+    const reBox = instance.shadow
+      .querySelector('.shiage-prop')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    reBox.checked = true
+    reBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+    expect(a.style.getPropertyValue('padding-left')).toBe('24px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('')
+    // Tracker re-detects the change → row goes back to checked + un-struck.
+    const liveRow = instance.shadow.querySelector('.shiage-prop')!
+    expect(liveRow.classList.contains('shiage-prop--excluded')).toBe(false)
+  })
+
+  it('per-element + per-property precedence: re-ticking the element keeps individually unticked props held', async () => {
+    const el = document.createElement('div')
+    el.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    el.setAttribute('class', 'p-4')
+    el.style.paddingLeft = '16px'
+    el.style.paddingRight = '16px'
+    document.body.appendChild(el)
+
+    const instance = mount({ autoConnect: false })
+
+    el.style.paddingLeft = '24px'
+    el.style.paddingRight = '32px'
+    await flushMutations()
+    const live = instance.manager.getAllChanges()
+    expect(live[0]!.changes.map((c) => c.property).sort()).toEqual(['padding-left', 'padding-right'])
+
+    // Untick padding-left specifically (the property row that mentions 'padding-left: 16px → 24px').
+    const rows = [...instance.shadow.querySelectorAll('.shiage-prop')]
+    const leftRow = rows.find((r) => r.textContent?.includes('padding-left'))!
+    const leftBox = leftRow.querySelector('input[type="checkbox"]') as HTMLInputElement
+    leftBox.checked = false
+    leftBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+    expect(el.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(el.style.getPropertyPriority('padding-left')).toBe('important')
+    expect(el.style.getPropertyValue('padding-right')).toBe('32px') // still live
+
+    // Untick the whole element → padding-right is now also held.
     const headBox = instance.shadow
       .querySelector('.shiage-group__head')!
       .querySelector('input[type="checkbox"]') as HTMLInputElement
     headBox.checked = false
     headBox.dispatchEvent(new Event('change'))
-    expect(instance.shadow.querySelector('.shiage-group--excluded')).toBeTruthy()
+    await flushMutations()
+    expect(el.style.getPropertyValue('padding-right')).toBe('16px')
+    expect(el.style.getPropertyPriority('padding-right')).toBe('important')
 
-    // Reset wipes both exclusion choices along with the tracker's baseline.
-    const reset = instance.shadow.querySelector('.shiage-group__reset') as HTMLButtonElement
-    reset.click()
+    // Re-tick the element → padding-right is released (the user's per-element intent is gone),
+    // padding-left STAYS held (the user's per-property unstick still stands).
+    const reHead = instance.shadow
+      .querySelector('.shiage-group__head')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    reHead.checked = true
+    reHead.dispatchEvent(new Event('change'))
+    await flushMutations()
+    expect(el.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(el.style.getPropertyPriority('padding-left')).toBe('important')
+    expect(el.style.getPropertyValue('padding-right')).toBe('32px')
+    expect(el.style.getPropertyPriority('padding-right')).toBe('')
+  })
 
-    // No active changes anymore → no group at all → no `shiage-group--excluded` ghost.
+  it('new edits on a Removed element track normally (and the held properties stay invisible)', async () => {
+    const el = document.createElement('div')
+    el.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    el.style.paddingLeft = '16px'
+    el.style.color = 'rgb(0, 0, 0)'
+    document.body.appendChild(el)
+
+    const instance = mount({ autoConnect: false })
+
+    el.style.paddingLeft = '24px'
+    await flushMutations()
+    const remove = instance.shadow.querySelector('.shiage-group__remove') as HTMLButtonElement
+    remove.click()
+    await flushMutations()
+    // After Remove, no group renders for this element.
     expect(instance.shadow.querySelectorAll('.shiage-group')).toHaveLength(0)
 
-    // A subsequent edit on the same element re-appears un-excluded.
-    a.style.paddingLeft = '32px'
+    // Now a NEW DevTools edit on a different property.
+    el.style.color = 'rgb(255, 0, 0)'
     await flushMutations()
-    const group = instance.shadow.querySelector('.shiage-group')
-    expect(group).toBeTruthy()
-    expect(group!.classList.contains('shiage-group--excluded')).toBe(false)
-    const newHeadBox = group!.querySelector(
-      '.shiage-group__head input[type="checkbox"]',
-    ) as HTMLInputElement
-    expect(newHeadBox.checked).toBe(true)
+
+    // The removed property is still pinned (no UI for it); the new edit shows up as a fresh group
+    // with a single live row.
+    expect(el.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(el.style.getPropertyPriority('padding-left')).toBe('important')
+    const groups = instance.shadow.querySelectorAll('.shiage-group')
+    expect(groups).toHaveLength(1)
+    const rows = [...groups[0]!.querySelectorAll('.shiage-prop')]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.textContent).toContain('color')
+    expect(rows[0]!.classList.contains('shiage-prop--excluded')).toBe(false)
+    // Save reflects the single live color change.
+    expect(
+      [...instance.shadow.querySelectorAll('button')].find((b) =>
+        b.textContent?.startsWith('Save 1 change'),
+      ),
+    ).toBeTruthy()
+  })
+
+  it('apply-result success removes inline overrides for saved props and releases all holds', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+    const b = document.createElement('button')
+    b.setAttribute('data-shiage-loc', 'src/App.tsx:2:2')
+    b.setAttribute('class', 'p-2')
+    b.style.paddingLeft = '8px'
+    document.body.appendChild(b)
+
+    const instance = mount({
+      wsUrl: 'ws://localhost:1234',
+      WebSocketImpl: FakeWebSocket,
+      genSaveId: () => 'save-1',
+    })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+
+    // a is going to be saved; b is going to be Removed (held).
+    a.style.paddingLeft = '24px'
+    b.style.paddingLeft = '16px'
+    await flushMutations()
+
+    // Remove b → remove-origin hold (no snapshot; b's group disappears from the panel).
+    const groups = instance.shadow.querySelectorAll('.shiage-group')
+    const bGroup = [...groups].find((g) => g.textContent?.includes('src/App.tsx:2:2'))!
+    ;(bGroup.querySelector('.shiage-group__remove') as HTMLButtonElement).click()
+    await flushMutations()
+    expect(b.style.getPropertyPriority('padding-left')).toBe('important')
+
+    // Save what's left live (just a).
+    const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
+      btn.textContent?.startsWith('Save 1 change'),
+    ) as HTMLButtonElement
+    save.click()
+    const sentSave = socket.parsedSent().find((m) => m.type === 'save')!
+    if (sentSave.type !== 'save') throw new Error('expected save')
+    expect(sentSave.edits.map((e) => e.sourceLoc)).toEqual(['src/App.tsx:1:1'])
+
+    // Server reports success.
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'apply-result', saveId: 'save-1', success: true }),
+    })
+
+    // a's saved property is `removeProperty`'d unconditionally; the user-inline 24px is gone too,
+    // letting HMR repaint with the new Tailwind class.
+    expect(a.style.getPropertyValue('padding-left')).toBe('')
+    // b's remove-origin hold released → originalInline ('16px' captured at hold time, the user's
+    // "DevTools" inline edit) restored.
+    expect(b.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(b.style.getPropertyPriority('padding-left')).toBe('')
+    // Panel transitioned to applied view.
+    expect(instance.shadow.querySelector('.shiage-body')!.textContent).toContain('Saved ✓')
+  })
+
+  it('apply-result failure preserves holds, snapshots, and exclusions for retry', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+
+    const instance = mount({
+      wsUrl: 'ws://localhost:1234',
+      WebSocketImpl: FakeWebSocket,
+      genSaveId: () => 'save-1',
+    })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+
+    a.style.paddingLeft = '24px'
+    await flushMutations()
+
+    // Remove a → remove-origin hold (no snapshot; a's group disappears from the panel).
+    ;(instance.shadow.querySelector('.shiage-group__remove') as HTMLButtonElement).click()
+    await flushMutations()
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+
+    // Force a save through (even with no live changes, ensure the apply-result path triggers).
+    // We'll add a second element with a live change to make the save have content.
+    const b = document.createElement('div')
+    b.setAttribute('data-shiage-loc', 'src/App.tsx:2:2')
+    b.setAttribute('class', 'p-2')
+    b.style.paddingLeft = '8px'
+    document.body.appendChild(b)
+    await flushMutations()
+    b.style.paddingLeft = '16px'
+    await flushMutations()
+    const save = [...instance.shadow.querySelectorAll('button')].find((btn) =>
+      btn.textContent?.startsWith('Save'),
+    ) as HTMLButtonElement
+    save.click()
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: 'apply-result',
+        saveId: 'save-1',
+        success: false,
+        error: 'boom',
+      }),
+    })
+
+    // Hold on `a` survives.
+    expect(a.style.getPropertyValue('padding-left')).toBe('16px')
+    expect(a.style.getPropertyPriority('padding-left')).toBe('important')
+    // Error view is shown.
+    expect(instance.shadow.querySelector('.shiage-body')!.textContent).toContain('boom')
+  })
+
+  it('snapshot row survives the tracker auto-clear after an exclusion', async () => {
+    const a = document.createElement('div')
+    a.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    a.setAttribute('class', 'p-4')
+    a.style.paddingLeft = '16px'
+    document.body.appendChild(a)
+
+    const instance = mount({ autoConnect: false })
+    a.style.paddingLeft = '24px'
+    await flushMutations()
+    expect(instance.manager.getAllChanges()).toHaveLength(1)
+
+    // Untick → hold applied → tracker auto-clears (computed = baseline). Snapshot keeps the row.
+    const propBox = instance.shadow
+      .querySelector('.shiage-prop')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    propBox.checked = false
+    propBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+    expect(instance.manager.getAllChanges()).toHaveLength(0)
+    // Group + row still rendered (from snapshot).
+    expect(instance.shadow.querySelectorAll('.shiage-group')).toHaveLength(1)
+    expect(instance.shadow.querySelector('.shiage-prop')!.textContent).toContain(
+      'padding-left: 16px → 24px',
+    )
+  })
+
+  it('checkbox toggles preserve the row order across renders', async () => {
+    // Three changes appear in order: padding-left, color, font-size. Unticking padding-left auto-
+    // clears it from the tracker; without the sticky order map, the snapshot loop would append it
+    // *after* color and font-size, shuffling the panel. With the fix, padding-left stays in slot 0.
+    const el = document.createElement('div')
+    el.setAttribute('data-shiage-loc', 'src/App.tsx:1:1')
+    el.setAttribute('class', 'p-4')
+    el.style.paddingLeft = '16px'
+    el.style.color = 'rgb(0, 0, 0)'
+    el.style.fontSize = '14px'
+    document.body.appendChild(el)
+
+    const instance = mount({ autoConnect: false })
+    el.style.paddingLeft = '24px'
+    await flushMutations()
+    el.style.color = 'rgb(255, 0, 0)'
+    await flushMutations()
+    el.style.fontSize = '18px'
+    await flushMutations()
+
+    const orderBefore = [...instance.shadow.querySelectorAll('.shiage-prop')].map((r) =>
+      (r.textContent ?? '').split(':')[0]?.trim(),
+    )
+    expect(orderBefore).toEqual(['padding-left', 'color', 'font-size'])
+
+    // Untick the first row (padding-left).
+    const firstBox = instance.shadow
+      .querySelectorAll('.shiage-prop')[0]!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    firstBox.checked = false
+    firstBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+
+    const orderAfter = [...instance.shadow.querySelectorAll('.shiage-prop')].map((r) =>
+      (r.textContent ?? '').split(':')[0]?.trim(),
+    )
+    expect(orderAfter).toEqual(['padding-left', 'color', 'font-size'])
+    // And the unticked row is struck.
+    const rows = instance.shadow.querySelectorAll('.shiage-prop')
+    expect(rows[0]!.classList.contains('shiage-prop--excluded')).toBe(true)
+    expect(rows[1]!.classList.contains('shiage-prop--excluded')).toBe(false)
+    expect(rows[2]!.classList.contains('shiage-prop--excluded')).toBe(false)
+
+    // Re-tick. Order still stable.
+    const reBox = instance.shadow
+      .querySelectorAll('.shiage-prop')[0]!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement
+    reBox.checked = true
+    reBox.dispatchEvent(new Event('change'))
+    await flushMutations()
+    const orderRecheck = [...instance.shadow.querySelectorAll('.shiage-prop')].map((r) =>
+      (r.textContent ?? '').split(':')[0]?.trim(),
+    )
+    expect(orderRecheck).toEqual(['padding-left', 'color', 'font-size'])
   })
 
   it('sends a hello with the protocol version on connect', () => {
