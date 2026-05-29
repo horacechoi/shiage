@@ -16,7 +16,7 @@ import shiageStampPlugin from '@shiage/jsx-transform'
 import type { Plugin, TransformResult } from 'vite'
 import { startShiageServer, type ShiageServer } from './ws-server'
 import { watchThemeSource } from './watch-config'
-import { runtimeInjectionTags } from './runtime-asset'
+import { runtimeInjectionTags, watchRuntimeIife } from './runtime-asset'
 
 export interface ShiageOptions {
   /** Override Tailwind auto-detection (version, and the v4 CSS entry or v3 config path). */
@@ -40,10 +40,13 @@ export default function shiage(options: ShiageOptions = {}): Plugin {
   let projectRoot = process.cwd()
   let server: ShiageServer | null = null
   let disposeWatch: (() => void) | null = null
+  let disposeRuntimeWatch: (() => void) | null = null
 
   async function shutdown(): Promise<void> {
     disposeWatch?.()
     disposeWatch = null
+    disposeRuntimeWatch?.()
+    disposeRuntimeWatch = null
     const closing = server?.close()
     server = null
     await closing
@@ -79,6 +82,18 @@ export default function shiage(options: ShiageOptions = {}): Plugin {
           ?.reload()
           .catch((err) => logger.warn(`[shiage] theme reload failed: ${(err as Error).message}`))
       })
+
+      // Watch the runtime IIFE. When @shiage/runtime's tsup --watch rewrites it, drop the inlined
+      // cache and tell Vite to do a full reload so the page re-fetches index.html with the fresh
+      // <script> contents. Lets a developer iterate on runtime/src/** without restarting Vite.
+      disposeRuntimeWatch = watchRuntimeIife(() => {
+        logger.info('  ➜  shiage:   runtime rebuilt, reloading…', {
+          clear: false,
+          timestamp: true,
+        })
+        viteServer.ws.send({ type: 'full-reload' })
+      })
+
       logger.info(`  ➜  shiage:   editing live on ws://localhost:${server.port}`, {
         clear: false,
         timestamp: true,
