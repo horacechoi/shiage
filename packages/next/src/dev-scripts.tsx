@@ -14,7 +14,7 @@ let warnedAboutMissingState = false
 function warnTurbopack(): void {
   if (warnedAboutMissingState) return
   warnedAboutMissingState = true
-  // eslint-disable-next-line no-console
+   
   console.warn(
     '[shiage] dev server not booted — Turbopack ignores webpack() config. ' +
       'Run `next dev --webpack` (Next 16+) or `next dev` with Turbopack disabled.',

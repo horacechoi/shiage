@@ -74,7 +74,7 @@ export function bootShiageServer(
       server = await startShiageServer(projectRoot, detect)
     } catch (err) {
       // No Tailwind, or detection failed: leave the page untouched rather than break dev.
-      // eslint-disable-next-line no-console
+       
       console.warn(`[shiage] overlay disabled — ${(err as Error).message}`)
       slot.resolved = true
       return null
@@ -82,7 +82,7 @@ export function bootShiageServer(
     slot.server = server
     slot.disposeWatch = watchThemeSource(server.themeSourcePath, () => {
       server.reload().catch((err) => {
-        // eslint-disable-next-line no-console
+         
         console.warn(`[shiage] theme reload failed: ${(err as Error).message}`)
       })
     })
@@ -92,7 +92,7 @@ export function bootShiageServer(
     slot.state = state
     slot.resolved = true
 
-    // eslint-disable-next-line no-console
+     
     console.info(`  ➜  shiage:   editing live on ws://localhost:${server.port}`)
     return state
   })()

@@ -86,7 +86,15 @@ async function loadTailwindNode(base: string): Promise<TailwindNodeModule> {
         `tooling (@tailwindcss/vite, @tailwindcss/postcss, …); install it to use Shiage with Tailwind v4.`,
     )
   }
-  return (await import(pathToFileURL(resolved).href)) as unknown as TailwindNodeModule
+  // The `webpackIgnore: true` magic comment tells webpack to skip static analysis of this dynamic
+  // import — without it, webpack emits a "Critical dependency: the request of a dependency is an
+  // expression" warning every time @shiage/core is bundled (e.g. by @shiage/next under webpack),
+  // plus a corresponding PackFileCacheStrategy infra log. The import is intentionally dynamic
+  // (we resolve `@tailwindcss/node` against the user's project root, not ours), so the warning
+  // is a false positive. Other bundlers ignore the comment harmlessly.
+  return (await import(
+    /* webpackIgnore: true */ pathToFileURL(resolved).href
+  )) as unknown as TailwindNodeModule
 }
 
 /**

@@ -126,4 +126,124 @@ describe('withShiage()', () => {
     }
     expect(out.module.rules.length).toBe(1)
   })
+
+  // ignoreWarnings: suppresses the "Critical dependency: the request of a dependency is an
+  // expression" warnings webpack emits when parsing @shiage/core's bundled chunk (whose v4
+  // ThemeSource uses dynamic import()) and jiti (whose v3 path uses the same pattern). Both are
+  // intentional dynamic loads resolved at runtime, so the warning is a false positive. We can't
+  // suppress these via serverExternalPackages — parse-time warnings fire before externalization
+  // takes effect.
+  describe('webpack ignoreWarnings', () => {
+    it('appends the two Shiage warning matchers in dev', async () => {
+      const wrapped = withShiage({})
+      const out = (await wrapped.webpack!({} as never, devCtx as never)) as {
+        ignoreWarnings: Array<{ module: RegExp; message: RegExp }>
+      }
+      expect(out.ignoreWarnings).toHaveLength(2)
+      // @shiage/core chunk matcher.
+      const coreMatcher = out.ignoreWarnings.find((m) =>
+        m.module.test('/abs/packages/core/dist/chunk-XYZ.js'),
+      )
+      expect(coreMatcher).toBeDefined()
+      expect(coreMatcher?.message.test('Critical dependency: …')).toBe(true)
+      // jiti matcher (both .js and .mjs).
+      const jitiMatcher = out.ignoreWarnings.find((m) =>
+        m.module.test('/abs/node_modules/jiti/lib/jiti.mjs'),
+      )
+      expect(jitiMatcher).toBeDefined()
+    })
+
+    it('preserves any ignoreWarnings the user already configured', async () => {
+      const userMatcher = { message: /some other warning/ }
+      const wrapped = withShiage({})
+      const config = { ignoreWarnings: [userMatcher] as unknown[] }
+      const out = (await wrapped.webpack!(config as never, devCtx as never)) as {
+        ignoreWarnings: unknown[]
+      }
+      expect(out.ignoreWarnings[0]).toBe(userMatcher)
+      expect(out.ignoreWarnings).toHaveLength(3) // user + 2 ours
+    })
+
+    it('does not add ignoreWarnings in production', async () => {
+      const wrapped = withShiage({})
+      const config = {}
+      const out = (await wrapped.webpack!(config as never, prodCtx as never)) as {
+        ignoreWarnings?: unknown[]
+      }
+      expect(out.ignoreWarnings).toBeUndefined()
+    })
+  })
+
+  // infrastructureLogging.console: webpack's PackFileCacheStrategy logs a back-to-back "Parsing of
+  // ... for build dependencies failed" / "Build dependencies behind this expression are ignored"
+  // pair for the same dynamic imports — through `infrastructureLogging`, not the module warnings
+  // pipeline, so `ignoreWarnings` can't catch it. We wrap the infra console to drop the pair only
+  // when it points at a Shiage-attributable path; unrelated cache warnings still surface.
+  describe('infrastructureLogging filter', () => {
+    // Each test passes a stub `console` through withShiage so we can observe what the filter
+    // forwards. The Proxy wrapper around our stub lets us swap out only the methods we care about.
+    it('drops the Shiage-attributable PackFileCacheStrategy pair (core chunk)', async () => {
+      const calls: unknown[][] = []
+      const stub = { warn: (...a: unknown[]) => calls.push(a) }
+      const w = withShiage({})
+      const cfg = { infrastructureLogging: { console: stub } }
+      const result = (await w.webpack!(cfg as never, devCtx as never)) as {
+        infrastructureLogging: { console: { warn: (...a: unknown[]) => void } }
+      }
+      // First (head) — Shiage-attributable: suppressed.
+      result.infrastructureLogging.console.warn(
+        "Parsing of /Users/x/packages/core/dist/chunk-ABC.js for build dependencies failed at 'import(pathToFileURL(resolved).href)'.",
+      )
+      // Second (tail) — generic; should be dropped because the head was just suppressed.
+      result.infrastructureLogging.console.warn(
+        'Build dependencies behind this expression are ignored and might cause incorrect cache invalidation.',
+      )
+      expect(calls).toEqual([])
+    })
+
+    it('drops the jiti pair too', async () => {
+      const calls: unknown[][] = []
+      const stub = { warn: (...a: unknown[]) => calls.push(a) }
+      const w = withShiage({})
+      const cfg = { infrastructureLogging: { console: stub } }
+      const result = (await w.webpack!(cfg as never, devCtx as never)) as {
+        infrastructureLogging: { console: { warn: (...a: unknown[]) => void } }
+      }
+      result.infrastructureLogging.console.warn(
+        "Parsing of /Users/x/node_modules/jiti/lib/jiti.mjs for build dependencies failed at 'import(id)'.",
+      )
+      result.infrastructureLogging.console.warn(
+        'Build dependencies behind this expression are ignored and might cause incorrect cache invalidation.',
+      )
+      expect(calls).toEqual([])
+    })
+
+    it('lets unrelated cache warnings through (only the Shiage-attributable pair is suppressed)', async () => {
+      const calls: unknown[][] = []
+      const stub = { warn: (...a: unknown[]) => calls.push(a) }
+      const w = withShiage({})
+      const cfg = { infrastructureLogging: { console: stub } }
+      const result = (await w.webpack!(cfg as never, devCtx as never)) as {
+        infrastructureLogging: { console: { warn: (...a: unknown[]) => void } }
+      }
+      // Unrelated head (not @shiage/core, not jiti) → goes through. So does its tail.
+      result.infrastructureLogging.console.warn(
+        "Parsing of /Users/x/node_modules/some-other-pkg/index.js for build dependencies failed at 'import(x)'.",
+      )
+      result.infrastructureLogging.console.warn(
+        'Build dependencies behind this expression are ignored and might cause incorrect cache invalidation.',
+      )
+      expect(calls).toHaveLength(2)
+    })
+
+    it('preserves other infrastructureLogging fields the user already set', async () => {
+      const stub = { warn: () => undefined }
+      const w = withShiage({})
+      const cfg = { infrastructureLogging: { level: 'verbose', console: stub } } as unknown
+      const result = (await w.webpack!(cfg as never, devCtx as never)) as {
+        infrastructureLogging: { level: string }
+      }
+      expect(result.infrastructureLogging.level).toBe('verbose')
+    })
+  })
 })

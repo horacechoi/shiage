@@ -62,6 +62,82 @@ const JSX_FILE = /\.[jt]sx$/
 // they slip past the validator while still letting us check membership at runtime.
 const SHIAGE_LOADER_MARK = Symbol.for('shiage.next.loaderMark')
 
+// Webpack module-warning matchers for the noisy-but-benign "Critical dependency: the request of a
+// dependency is an expression" emitted by webpack's parser when it can't statically resolve a
+// dynamic `import()` — fired from @shiage/core's bundled chunk (v4 ThemeSource loads
+// `@tailwindcss/node` via `import(pathToFileURL(resolved).href)`) and from jiti itself (used by
+// v3 ThemeSource to load the user's tailwind.config). Both imports are intentional and resolved
+// at runtime via Node, so the warning is a false positive. `serverExternalPackages` doesn't help
+// here: parse-time warnings fire before externalization takes effect.
+const SHIAGE_WARNING_MATCHERS = [
+  { module: /[\\/]packages[\\/]core[\\/]dist[\\/]chunk-/, message: /Critical dependency/ },
+  { module: /[\\/]jiti[\\/]lib[\\/]jiti\.m?js/, message: /Critical dependency/ },
+] as const
+
+// Webpack's PackFileCacheStrategy ("FileSystemInfo") walks build dependencies for cache
+// invalidation and can't resolve the same dynamic imports — it logs a pair of warnings per file:
+//   "Parsing of <path> for build dependencies failed at 'import(...)'."
+//   "Build dependencies behind this expression are ignored..."
+// These go through `infrastructureLogging`, not the regular `module.warnings` pipeline, so
+// `ignoreWarnings` doesn't catch them. We intercept the infra console and drop the pair only when
+// the first message points at a Shiage-attributable path — keeping any unrelated cache warnings
+// (legitimate signals) visible.
+const SHIAGE_INFRA_HEAD =
+  /Parsing of .+(packages[\\/]core[\\/]dist[\\/]chunk-|jiti[\\/]lib[\\/]jiti).+for build dependencies failed/
+const SHIAGE_INFRA_TAIL = /Build dependencies behind this expression are ignored/
+
+interface MinimalConsole {
+  warn?(...args: unknown[]): void
+  log?(...args: unknown[]): void
+  info?(...args: unknown[]): void
+  error?(...args: unknown[]): void
+  debug?(...args: unknown[]): void
+  trace?(...args: unknown[]): void
+  group?(...args: unknown[]): void
+  groupCollapsed?(...args: unknown[]): void
+  groupEnd?(...args: unknown[]): void
+  status?(...args: unknown[]): void
+  profile?(...args: unknown[]): void
+  profileEnd?(...args: unknown[]): void
+  clear?(...args: unknown[]): void
+  [k: string]: unknown
+}
+
+/** Wrap a console-like target so the Shiage-attributable PackFileCacheStrategy warning pair is
+ * dropped. The pair always arrives back-to-back; we suppress the second only when the first was
+ * already suppressed, so the generic "Build dependencies behind..." line still surfaces for
+ * unrelated cache failures. */
+function buildShiageInfraConsole(target: MinimalConsole): MinimalConsole {
+  let lastSuppressed = false
+  const wrap = (key: 'warn' | 'log' | 'info'): ((...args: unknown[]) => void) => {
+    const orig = target[key]
+    return (...args: unknown[]) => {
+      const text = args
+        .map((a) =>
+          typeof a === 'string' ? a : ((a as { message?: string })?.message ?? String(a)),
+        )
+        .join(' ')
+      if (SHIAGE_INFRA_HEAD.test(text)) {
+        lastSuppressed = true
+        return
+      }
+      if (lastSuppressed && SHIAGE_INFRA_TAIL.test(text)) {
+        lastSuppressed = false
+        return
+      }
+      lastSuppressed = false
+      if (typeof orig === 'function') orig.apply(target, args)
+    }
+  }
+  // Proxy so any extra console methods webpack uses (status, profile, etc.) flow through unchanged.
+  return new Proxy(target, {
+    get(t, prop, receiver) {
+      if (prop === 'warn' || prop === 'log' || prop === 'info') return wrap(prop)
+      return Reflect.get(t, prop, receiver)
+    },
+  }) as MinimalConsole
+}
+
 const require = createRequire(import.meta.url)
 
 function resolveLoaderPath(): string {
@@ -90,9 +166,9 @@ export default function withShiage<C extends NextConfigLike>(
 
   const userWebpack = nextConfig.webpack
 
-  // Add our pre-rule to `next.module.rules` in-place. Pulled out so both the sync and async return
-  // paths reuse it without duplicating loader-resolve and the idempotency check.
-  function addLoaderRule(next: WebpackConfig): void {
+  // Mutate `next` in-place: add our pre-rule + suppress the known-benign module warnings. Pulled
+  // out so both the sync and async return paths reuse it without duplicating logic.
+  function applyShiageMutations(next: WebpackConfig): void {
     next.module ??= {}
     next.module.rules ??= []
     const alreadyAdded = next.module.rules.some(
@@ -101,19 +177,32 @@ export default function withShiage<C extends NextConfigLike>(
         typeof r === 'object' &&
         (r as Record<symbol, unknown>)[SHIAGE_LOADER_MARK] === true,
     )
-    if (alreadyAdded) return
-    const projectRoot = process.cwd()
-    const rule: WebpackRule & { [SHIAGE_LOADER_MARK]: true } = {
-      test: JSX_FILE,
-      exclude: /node_modules/,
-      // `enforce: 'pre'` is critical: it puts our loader in the pre phase so it runs before
-      // Next's normal SWC loader. Without it, SWC would consume JSX first and there'd be no
-      // JSXOpeningElement left for the Babel stamp to visit.
-      enforce: 'pre',
-      use: [{ loader: resolveLoaderPath(), options: { projectRoot } }],
-      [SHIAGE_LOADER_MARK]: true,
+    if (!alreadyAdded) {
+      const projectRoot = process.cwd()
+      const rule: WebpackRule & { [SHIAGE_LOADER_MARK]: true } = {
+        test: JSX_FILE,
+        exclude: /node_modules/,
+        // `enforce: 'pre'` is critical: it puts our loader in the pre phase so it runs before
+        // Next's normal SWC loader. Without it, SWC would consume JSX first and there'd be no
+        // JSXOpeningElement left for the Babel stamp to visit.
+        enforce: 'pre',
+        use: [{ loader: resolveLoaderPath(), options: { projectRoot } }],
+        [SHIAGE_LOADER_MARK]: true,
+      }
+      next.module.rules.push(rule)
     }
-    next.module.rules.push(rule)
+    // Suppress the known-benign "Critical dependency" warnings (see SHIAGE_WARNING_MATCHERS).
+    const existingWarnings = (next.ignoreWarnings as unknown[] | undefined) ?? []
+    next.ignoreWarnings = [...existingWarnings, ...SHIAGE_WARNING_MATCHERS]
+
+    // Filter the PackFileCacheStrategy infra-log pairs that point at the same Shiage modules.
+    const infra = ((next.infrastructureLogging as { console?: MinimalConsole } | undefined) ??
+      {}) as { console?: MinimalConsole; [k: string]: unknown }
+    next.infrastructureLogging = {
+      ...infra,
+       
+      console: buildShiageInfraConsole(infra.console ?? (console as unknown as MinimalConsole)),
+    }
   }
 
   const wrappedWebpack: WebpackFn = (config, ctx) => {
@@ -132,11 +221,11 @@ export default function withShiage<C extends NextConfigLike>(
     // user opted into async); otherwise stay sync.
     if (userResult instanceof Promise) {
       return userResult.then((next) => {
-        addLoaderRule(next)
+        applyShiageMutations(next)
         return next
       })
     }
-    addLoaderRule(userResult)
+    applyShiageMutations(userResult)
     return userResult
   }
 
