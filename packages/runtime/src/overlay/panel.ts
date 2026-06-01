@@ -56,19 +56,20 @@ export interface Panel {
   destroy(): void
 }
 
-// Lucide-style inline SVG (MIT-licensed path data). Rendered via innerHTML on a span — these
-// strings are all owned by the runtime; no user content is interpolated, so XSS is a non-issue.
-// Stroke-based, 24×24 viewBox; `currentColor` lets CSS recolor (e.g. the error variant).
+// Inline SVG (lucide-MIT for the stroke icons; the table-edit mark is the project's own glyph
+// supplied directly by the design). Rendered via innerHTML on a span — these strings are all
+// owned by the runtime; no user content is interpolated, so XSS is a non-issue. Stroke icons use
+// a 24×24 viewBox with `currentColor` stroke so CSS can recolor them (e.g. the error variant).
 const SVG_ATTRS =
   'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
   'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
 
 const ICONS = {
-  // square-pen — the Shiage "edit a stamped element" mark; used on tracking-state titles + pill.
+  // table-edit — the Shiage "edit a stamped element" mark; used on tracking-state titles + pill.
+  // Fill-based (unlike the lucide icons below); inherits its color from CSS via currentColor.
   edit:
-    `<svg ${SVG_ATTRS}>` +
-    '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
-    '<path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">' +
+    '<path d="M4.55371 13.1662H11.1482V8.59573H4.55371V13.1662ZM4.55371 6.89248H19.4462V4.55373H4.55371V6.89248ZM13.8277 22.1495C13.5872 22.1495 13.3851 22.0676 13.2215 21.904C13.0578 21.7403 12.976 21.5382 12.976 21.2977V19.6635C12.976 19.4253 13.0215 19.2005 13.1125 18.989C13.2035 18.7773 13.326 18.5941 13.48 18.4392L18.5185 13.4305C18.6813 13.2663 18.8595 13.1486 19.0532 13.0772C19.2469 13.0057 19.4427 12.97 19.6407 12.97C19.8487 12.97 20.0505 13.0105 20.246 13.0915C20.4415 13.1725 20.618 13.292 20.7755 13.45L21.7005 14.375C21.8578 14.533 21.973 14.709 22.046 14.903C22.119 15.0968 22.1555 15.2907 22.1555 15.4847C22.1555 15.6841 22.115 15.8846 22.034 16.0862C21.953 16.2877 21.832 16.4693 21.6712 16.631L16.6865 21.6397C16.5315 21.7932 16.3474 21.9166 16.1342 22.0097C15.9212 22.1029 15.6971 22.1495 15.462 22.1495H13.8277ZM4.55371 21.1495C4.09371 21.1495 3.69488 20.9806 3.35721 20.6427C3.01938 20.3051 2.85046 19.9062 2.85046 19.4462V4.55373C2.85046 4.09207 3.01938 3.69181 3.35721 3.35298C3.69488 3.01398 4.09371 2.84448 4.55371 2.84448H19.4462C19.9079 2.84448 20.3081 3.01398 20.647 3.35298C20.986 3.69181 21.1555 4.09207 21.1555 4.55373V10.4115C21.1555 10.6518 21.072 10.8538 20.9052 11.0175C20.7382 11.1811 20.5341 11.263 20.293 11.263C20.0516 11.263 19.8501 11.1811 19.6885 11.0175C19.527 10.8538 19.4462 10.6518 19.4462 10.4115V8.59573H12.8517V13.1662H15.1505C15.3441 13.1662 15.4775 13.2574 15.5507 13.4397C15.6237 13.6219 15.594 13.7773 15.4615 13.906L11.888 17.4542C11.7555 17.5869 11.599 17.6197 11.4187 17.5527C11.2384 17.4857 11.1482 17.3576 11.1482 17.1685V14.8755H4.55371V19.4462H10.2967C10.537 19.4462 10.739 19.5285 10.9027 19.693C11.0664 19.8575 11.1482 20.0606 11.1482 20.3022C11.1482 20.5439 11.0664 20.7455 10.9027 20.907C10.739 21.0686 10.537 21.1495 10.2967 21.1495H4.55371ZM14.5657 20.5597H15.5157L18.5227 17.529L17.5977 16.6027L14.5657 19.6082V20.5597ZM18.0727 17.0527L17.5977 16.6027L18.5227 17.5277L18.0727 17.0527Z"/>' +
     '</svg>',
   // save — saving + preview titles.
   save:
@@ -225,10 +226,10 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
   const body = el('div', 'shiage-body')
   panel.appendChild(body)
 
-  // Pill: icon-only round button. The connection dot is preserved but visually demoted to a small
-  // 6px status indicator in the corner — green when the WS is open, gray/amber/red otherwise.
-  // A count badge (top-right) appears when there are unsaved tracked changes.
-  const dot = el('span', 'shiage-pill__dot shiage-pill__dot--closed')
+  // Pill: icon-only round button. A count badge (top-right) appears when there are unsaved
+  // tracked changes. The WS connection state is intentionally NOT surfaced on the pill — the
+  // dot indicator was dropped per the refined design; `setConnection` remains a no-op on this
+  // controller so mount.ts can keep calling it without coupling to an absent UI element.
   const pillIcon = iconSpan('edit', 'shiage-pill__icon')
   const pillBadge = el('span', 'shiage-pill__badge')
   pillBadge.hidden = true
@@ -236,7 +237,7 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
   pill.type = 'button'
   pill.setAttribute('aria-label', 'Shiage')
   pill.title = 'Shiage'
-  pill.append(pillIcon, dot, pillBadge)
+  pill.append(pillIcon, pillBadge)
   pill.addEventListener('click', () => {
     panel.hidden = !panel.hidden
   })
@@ -362,8 +363,11 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
       // anchor so a return to tracking-with-changes auto-opens again (e.g. after `applied`).
       lastTrackingIncludedCount = view.kind === 'tracking' ? view.includedCount : 0
     },
-    setConnection(status) {
-      dot.className = `shiage-pill__dot shiage-pill__dot--${status}`
+    setConnection() {
+      // No-op: the refined design removes the on-pill connection dot. The Panel interface keeps
+      // this method (with its `status` parameter declared on the type) so mount.ts's ws-client
+      // wiring stays unchanged; a future redesign can surface the status via a different
+      // affordance without churning the orchestrator.
     },
     open() {
       panel.hidden = false

@@ -21,21 +21,21 @@ export const OVERLAY_CSS = `
 }
 
 /* ── Pill ──
-   40×40 icon button. The connection dot is preserved (smaller, bottom-right corner) so the WS
-   status is still visible at a glance; the count badge sits top-right and appears when the
-   tracker has unsaved changes. */
+   42×42 icon button bearing the 24×24 table-edit mark (9px padding all sides). The count badge
+   sits top-right and appears when the tracker has unsaved changes. No connection-status dot —
+   the refined design drops it; setConnection is a no-op on the controller. */
 .shiage-pill {
   position: relative;
-  width: 40px;
-  height: 40px;
-  padding: 8px;
+  width: 42px;
+  height: 42px;
+  padding: 9px;
   border: none;
   border-radius: 9999px;
   background: #1a1a1a;
   color: #ffffff;
   font: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.10), 0 2px 8px 0 rgba(0, 0, 0, 0.20);
   user-select: none;
   box-sizing: border-box;
   display: inline-flex;
@@ -50,19 +50,6 @@ export const OVERLAY_CSS = `
   color: #ffffff;
 }
 .shiage-pill__icon svg { width: 100%; height: 100%; display: block; }
-.shiage-pill__dot {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: #6b7280;
-  border: 1px solid #1a1a1a;
-}
-.shiage-pill__dot--open { background: #34d399; }
-.shiage-pill__dot--connecting { background: #fbbf24; }
-.shiage-pill__dot--closed { background: #f87171; }
 .shiage-pill__badge {
   position: absolute;
   top: -6px;

@@ -313,12 +313,16 @@ describe('createPanel — preview view (multi-file)', () => {
 })
 
 describe('createPanel — misc', () => {
-  it('reflects connection status on the pill dot', () => {
+  it('keeps setConnection callable as a no-op (the on-pill dot was removed)', () => {
+    // Refined design dropped the WS status dot from the pill. setConnection stays on the Panel
+    // interface so mount.ts's ws-client wiring is unchanged, but it no longer touches the DOM —
+    // and there is no .shiage-pill__dot to assert on.
     const panel = createPanel(document.body, noopCallbacks())
-    panel.setConnection('open')
-    expect(document.querySelector('.shiage-pill__dot--open')).toBeTruthy()
-    panel.setConnection('closed')
-    expect(document.querySelector('.shiage-pill__dot--closed')).toBeTruthy()
+    expect(document.querySelector('.shiage-pill__dot')).toBeNull()
+    expect(() => panel.setConnection('open')).not.toThrow()
+    expect(() => panel.setConnection('connecting')).not.toThrow()
+    expect(() => panel.setConnection('closed')).not.toThrow()
+    expect(document.querySelector('.shiage-pill__dot')).toBeNull()
   })
 
   it('does not re-open after the user collapses a tracking-with-changes panel', () => {
