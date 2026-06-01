@@ -1,10 +1,12 @@
-// The plugin's stateful server holder. It detects the project's Tailwind theme, builds the
-// reverse-lookup, and stands up core's framework-agnostic WebSocket server + protocol handler,
-// keeping the live theme/lookup behind a getter so a config reload can swap them in place. The Vite
-// plugin (index.ts) glues this to Vite's lifecycle; the same holder will serve the Next plugin.
-import { detectThemeSource, buildReverseLookup } from '@shiage/core'
-import type { DetectOptions, ReverseLookup, ThemeSource } from '@shiage/core'
-import { startWsServer, wireProtocol } from '@shiage/core/server'
+// The framework-agnostic dev-server holder. It detects the project's Tailwind theme, builds the
+// reverse-lookup, and stands up the WebSocket transport + protocol handler — keeping the live
+// theme/lookup behind a getter so a config reload can swap them in place without rewiring the
+// running handler. The Vite plugin and the Next plugin both glue this to their host's dev lifecycle
+// identically; everything dev-server-shaped above the transport lives here, not in the plugins.
+import { detectThemeSource, buildReverseLookup } from '../index'
+import type { DetectOptions, ReverseLookup, ThemeSource } from '../index'
+import { startWsServer } from './ws-server'
+import { wireProtocol } from './protocol'
 
 export interface ShiageServer {
   /** The free port the standalone WS server bound to (injected into the page as a meta tag). */

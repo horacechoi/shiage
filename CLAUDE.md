@@ -78,8 +78,20 @@ pick→edit→save→diff→confirm→write→HMR flow is verified live in a bro
 their longhands) and **suppresses layout-derived `width`/`height`/`min`/`max` changes when a
 box-model property was edited** (unless the dimension is authored on the element's own inline
 style), so editing padding on an auto-sized element yields a clean single-class edit instead of a
-spurious `w-[Npx]`. **Currently: Phase 6 (Next.js plugin — webpack/Babel path; reuse
-`@shiage/core/server`).**
+spurious `w-[Npx]`. Phase 6 added the Next.js plugin: `startShiageServer` was hoisted from
+`@shiage/vite` into `@shiage/core/server/holder.ts` so both plugins reuse the same theme-detect +
+ws-bind + reload loop. `@shiage/next` exposes `withShiage(nextConfig)` — a sync-when-possible
+`webpack()` wrapper that fire-and-forgets a process-global WS-server boot (singleton-keyed by a
+`Symbol.for('shiage.next.devServer')` on `globalThis`, so the three per-dev compile passes — client,
+nodejs server, edge — share one server) and `unshift`s a `enforce:'pre'` loader rule running our
+Babel stamp before SWC eats the JSX. The loader is CJS-emitted (`tsup format:['cjs']` with
+`noExternal:['@shiage/jsx-transform']`) so webpack can `require()` it without ESM interop. The
+rule's idempotency marker is a `Symbol` rather than a string, so webpack 5's strict rule-schema
+validator (which only sees `Object.keys`) doesn't reject it. `<ShiageDevScripts />` is a sync server
+component the user drops into the App Router root layout (or Pages `_document` body): it reads the
+booted state and emits the `shiage-ws-port` meta + the inlined runtime IIFE (with
+`<\/script>` escape) in dev, or `null` + a one-shot Turbopack-hint warn otherwise.
+`examples/next-app/` is a Next 15 + Tailwind v4 demo. **Currently: Phase 7 (docs / demo / launch).**
 
 ## Resuming in a new session
 

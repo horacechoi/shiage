@@ -13,8 +13,8 @@
 // `apply: 'serve'` makes the whole plugin a true no-op in production builds.
 import { transformSync } from '@babel/core'
 import shiageStampPlugin from '@shiage/jsx-transform'
+import { startShiageServer, type ShiageServer } from '@shiage/core/server'
 import type { Plugin, TransformResult } from 'vite'
-import { startShiageServer, type ShiageServer } from './ws-server'
 import { watchThemeSource } from './watch-config'
 import { runtimeInjectionTags, watchRuntimeIife } from './runtime-asset'
 

@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+
+/* A custom theme token, so the demo proves Shiage maps against the project's real theme
+   (text-brand / bg-brand / border-brand) and not just Tailwind's defaults. */
+@theme {
+  --color-brand: #ff5500;
+}

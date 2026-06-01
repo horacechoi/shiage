@@ -6,3 +6,6 @@ export type { WsConnection, WsServerHandle, StartWsServerOptions } from './ws-se
 
 export { wireProtocol } from './protocol'
 export type { ProtocolContext, ProtocolHandler } from './protocol'
+
+export { startShiageServer } from './holder'
+export type { ShiageServer } from './holder'
