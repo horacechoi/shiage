@@ -43,21 +43,28 @@ export const OVERLAY_CSS = `
   justify-content: center;
 }
 .shiage-pill:hover { background: #2a2a2a; }
+/* Both icons coexist absolutely-positioned at the pill's centre so they occupy the same spot;
+   the panel's [hidden] state — via :has() on the root — drives an opacity cross-fade between
+   them. Neither icon ever leaves the DOM, so the swap is a smooth opacity transition, not a
+   flicker. */
 .shiage-pill__icon {
-  display: inline-flex;
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: 24px;
   height: 24px;
   color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms ease-out;
 }
 .shiage-pill__icon svg { width: 100%; height: 100%; display: block; }
-/* Two icons coexist inside the pill (table-edit + close); the panel's [hidden] state — via
-   :has() on the root — decides which one displays. Default: panel hidden → show edit, hide close. */
-.shiage-pill__icon--open { display: none; }
-.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--closed { display: none; }
-.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--open {
-  display: inline-flex;
-  color: #cccccc;
-}
+.shiage-pill__icon--closed { opacity: 1; }
+.shiage-pill__icon--open { opacity: 0; color: #cccccc; }
+.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--closed { opacity: 0; }
+.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--open { opacity: 1; }
 .shiage-pill__badge {
   position: absolute;
   top: -6px;
@@ -91,20 +98,35 @@ export const OVERLAY_CSS = `
   padding: 16px;
   box-sizing: border-box;
   transform-origin: bottom right;
+  opacity: 1;
+  transform: scale(1);
+  /* Discrete-transition pattern: opacity + transform animate continuously, while display
+     transitions discretely (allow-discrete keeps the panel mounted through the exit so the
+     opacity/transform can interpolate before display:none cuts it off). Browsers without
+     allow-discrete (Firefox < 129) degrade gracefully to instant show/hide. */
+  transition:
+    opacity 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    display 180ms cubic-bezier(0.16, 1, 0.3, 1) allow-discrete;
 }
-.shiage-panel[hidden] { display: none; }
-/* Short scale+fade entry. CSS animations re-fire when the rule becomes applicable again, so
-   each open transition (i.e. removal of the [hidden] attribute) replays the keyframes. The
-   transform-origin sits at the bottom-right corner so the panel grows out of the pill. */
-.shiage-panel:not([hidden]) {
-  animation: shiage-panel-appear 180ms cubic-bezier(0.16, 1, 0.3, 1);
+.shiage-panel[hidden] {
+  display: none;
+  opacity: 0;
+  transform: scale(0.92);
 }
-@keyframes shiage-panel-appear {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
+/* @starting-style declares the "from" state for entry transitions — without it the panel
+   would just appear instantly when [hidden] is removed (transitions need a known starting
+   value the property is changing FROM). Browsers without @starting-style support skip the
+   entry animation; the close still animates via the regular transition rules. */
+@starting-style {
+  .shiage-panel:not([hidden]) {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .shiage-panel:not([hidden]) { animation: none; }
+  .shiage-panel { transition: none; }
+  .shiage-pill__icon { transition: none; }
 }
 
 .shiage-body {
