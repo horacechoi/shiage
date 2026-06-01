@@ -7,8 +7,8 @@ export const OVERLAY_CSS = `
 
 .shiage-root {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: 24px;
+  right: 24px;
   z-index: 2147483647;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
