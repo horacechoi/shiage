@@ -127,6 +127,7 @@ export const OVERLAY_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .shiage-panel { transition: none; }
   .shiage-pill__icon { transition: none; }
+  .shiage-check { transition: none; }
 }
 
 .shiage-body {
@@ -305,15 +306,34 @@ export const OVERLAY_CSS = `
 .shiage-prop--excluded { opacity: 0.4; }
 
 .shiage-check {
-  /* accent-color: white flips the native checkbox so the fill (when checked) is white and
-     the browser chooses a dark check mark for contrast — matches the design's white-on-black
-     square with a black tick. Sizes stay the same: 14 in prop rows, 16 in the group head. */
-  accent-color: #ffffff;
+  /* Fully custom checkbox (appearance: none) so the UNCHECKED state matches the Figma
+     "Checkbox - disabled" node — a 1px #444 outline with ~3px radius and no fill. The
+     browser's native unchecked rendering varies and doesn't match. Checked state fills
+     white and inlines a black tick SVG via background-image. */
+  appearance: none;
+  -webkit-appearance: none;
   width: 14px;
   height: 14px;
   flex: none;
   cursor: pointer;
   margin: 0;
+  border: 1px solid #444444;
+  border-radius: 3px;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 70%;
+  box-sizing: border-box;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.shiage-check:checked {
+  background-color: #ffffff;
+  border-color: #ffffff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6 9 17l-5-5'/></svg>");
+}
+.shiage-check:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
 }
 .shiage-group__head .shiage-check { width: 16px; height: 16px; }
 
