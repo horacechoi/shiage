@@ -247,9 +247,10 @@ export const OVERLAY_CSS = `
   background: #101010;
   box-sizing: border-box;
 }
-/* When the group is excluded (user unchecked the head box), fade only the prop rows — the
-   head itself (checkbox, tag, loc, trash) stays at full opacity so the controls remain crisp
-   and the destructive trash glyph is still clearly readable. */
+/* When the group is excluded (user unchecked the head box), fade the head LINE and the prop
+   rows. The fade is scoped to the inner rows rather than the .shiage-group container so the
+   card's background/border/shadow stay at full opacity — only the interior content dims. */
+.shiage-group--excluded .shiage-group__head,
 .shiage-group--excluded .shiage-prop { opacity: 0.4; }
 .shiage-group__head {
   display: flex;
