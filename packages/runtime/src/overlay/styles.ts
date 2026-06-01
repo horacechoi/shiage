@@ -277,14 +277,14 @@ export const OVERLAY_CSS = `
   border: 1px solid #444444;
   border-radius: 6px;
   background: transparent;
-  color: #a1a1a1;
+  color: #f87171;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
 }
-.shiage-group__remove:hover { background: #2a2a2a; color: #f9fafb; }
+.shiage-group__remove:hover { background: #2a2a2a; }
 .shiage-group__remove .shiage-icon {
   display: inline-flex;
   width: 14px;
@@ -305,7 +305,10 @@ export const OVERLAY_CSS = `
 .shiage-prop--excluded { opacity: 0.4; }
 
 .shiage-check {
-  accent-color: #2563eb;
+  /* accent-color: white flips the native checkbox so the fill (when checked) is white and
+     the browser chooses a dark check mark for contrast — matches the design's white-on-black
+     square with a black tick. Sizes stay the same: 14 in prop rows, 16 in the group head. */
+  accent-color: #ffffff;
   width: 14px;
   height: 14px;
   flex: none;
