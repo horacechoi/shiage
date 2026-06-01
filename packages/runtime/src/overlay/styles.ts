@@ -226,7 +226,10 @@ export const OVERLAY_CSS = `
   font-size: 12px;
   line-height: 16px;
 }
-.shiage-error { color: #f87171; }
+/* Error variant: title text + icon both go red. Lives on the row so both children inherit
+   via currentColor (the SVG strokes/fills key off the parent color). */
+.shiage-title-row--error .shiage-title,
+.shiage-title-row--error .shiage-title-icon { color: #f87171; }
 
 /* ── Group cards (tracking view) ──
    One per element. Head row: checkbox + tag + loc on the left, trash-icon Remove on the right.

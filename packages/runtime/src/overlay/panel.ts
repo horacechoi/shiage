@@ -56,45 +56,45 @@ export interface Panel {
   destroy(): void
 }
 
-// Inline SVG (lucide-MIT for the stroke icons; the table-edit mark is the project's own glyph
-// supplied directly by the design). Rendered via innerHTML on a span — these strings are all
-// owned by the runtime; no user content is interpolated, so XSS is a non-issue. Stroke icons use
-// a 24×24 viewBox with `currentColor` stroke so CSS can recolor them (e.g. the error variant).
+// Inline SVG (all glyphs are the project's own designs supplied directly via the desktop SVGs;
+// previously some were lucide stand-ins). Rendered via innerHTML on a span — strings are all
+// owned by the runtime; no user content is interpolated, so XSS is a non-issue. Every icon uses
+// currentColor for its fill/stroke so the parent's CSS color drives the rendering — that lets
+// the title-icon stay neutral white by default but flip to red in the error variant, etc. The
+// trash icon is still the lucide trash-2 (MIT) since the design didn't supply a replacement.
 const SVG_ATTRS =
   'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
   'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
 
 const ICONS = {
   // table-edit — the Shiage "edit a stamped element" mark; used on tracking-state titles + pill.
-  // Fill-based (unlike the lucide icons below); inherits its color from CSS via currentColor.
+  // Fill-based (unlike the stroke icons below); inherits its color from CSS via currentColor.
   edit:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">' +
     '<path d="M4.55371 13.1662H11.1482V8.59573H4.55371V13.1662ZM4.55371 6.89248H19.4462V4.55373H4.55371V6.89248ZM13.8277 22.1495C13.5872 22.1495 13.3851 22.0676 13.2215 21.904C13.0578 21.7403 12.976 21.5382 12.976 21.2977V19.6635C12.976 19.4253 13.0215 19.2005 13.1125 18.989C13.2035 18.7773 13.326 18.5941 13.48 18.4392L18.5185 13.4305C18.6813 13.2663 18.8595 13.1486 19.0532 13.0772C19.2469 13.0057 19.4427 12.97 19.6407 12.97C19.8487 12.97 20.0505 13.0105 20.246 13.0915C20.4415 13.1725 20.618 13.292 20.7755 13.45L21.7005 14.375C21.8578 14.533 21.973 14.709 22.046 14.903C22.119 15.0968 22.1555 15.2907 22.1555 15.4847C22.1555 15.6841 22.115 15.8846 22.034 16.0862C21.953 16.2877 21.832 16.4693 21.6712 16.631L16.6865 21.6397C16.5315 21.7932 16.3474 21.9166 16.1342 22.0097C15.9212 22.1029 15.6971 22.1495 15.462 22.1495H13.8277ZM4.55371 21.1495C4.09371 21.1495 3.69488 20.9806 3.35721 20.6427C3.01938 20.3051 2.85046 19.9062 2.85046 19.4462V4.55373C2.85046 4.09207 3.01938 3.69181 3.35721 3.35298C3.69488 3.01398 4.09371 2.84448 4.55371 2.84448H19.4462C19.9079 2.84448 20.3081 3.01398 20.647 3.35298C20.986 3.69181 21.1555 4.09207 21.1555 4.55373V10.4115C21.1555 10.6518 21.072 10.8538 20.9052 11.0175C20.7382 11.1811 20.5341 11.263 20.293 11.263C20.0516 11.263 19.8501 11.1811 19.6885 11.0175C19.527 10.8538 19.4462 10.6518 19.4462 10.4115V8.59573H12.8517V13.1662H15.1505C15.3441 13.1662 15.4775 13.2574 15.5507 13.4397C15.6237 13.6219 15.594 13.7773 15.4615 13.906L11.888 17.4542C11.7555 17.5869 11.599 17.6197 11.4187 17.5527C11.2384 17.4857 11.1482 17.3576 11.1482 17.1685V14.8755H4.55371V19.4462H10.2967C10.537 19.4462 10.739 19.5285 10.9027 19.693C11.0664 19.8575 11.1482 20.0606 11.1482 20.3022C11.1482 20.5439 11.0664 20.7455 10.9027 20.907C10.739 21.0686 10.537 21.1495 10.2967 21.1495H4.55371ZM14.5657 20.5597H15.5157L18.5227 17.529L17.5977 16.6027L14.5657 19.6082V20.5597ZM18.0727 17.0527L17.5977 16.6027L18.5227 17.5277L18.0727 17.0527Z"/>' +
     '</svg>',
-  // save — saving + preview titles.
+  // save — saving + preview titles. Project SVG (fill-based, single complex path).
   save:
-    `<svg ${SVG_ATTRS}>` +
-    '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>' +
-    '<path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>' +
-    '<path d="M7 3v4a1 1 0 0 0 1 1h7"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">' +
+    '<path d="M4.55371 21.1495C4.09371 21.1495 3.69488 20.9806 3.35721 20.6427C3.01938 20.3051 2.85046 19.9062 2.85046 19.4462V4.55373C2.85046 4.09207 3.01938 3.69181 3.35721 3.35298C3.69488 3.01398 4.09371 2.84448 4.55371 2.84448H16.426C16.6618 2.84448 16.8865 2.89215 17.1002 2.98748C17.3139 3.08282 17.4973 3.20706 17.6505 3.36023L20.6397 6.34948C20.7929 6.50265 20.9171 6.68606 21.0125 6.89973C21.1078 7.1134 21.1555 7.33815 21.1555 7.57398V19.4462C21.1555 19.9062 20.986 20.3051 20.647 20.6427C20.3081 20.9806 19.9079 21.1495 19.4462 21.1495H4.55371ZM19.4462 7.62398L16.376 4.55373H4.55371V19.4462H19.4462V7.62398ZM11.994 17.8212C12.7146 17.8212 13.3291 17.569 13.8375 17.0645C14.3458 16.5601 14.6 15.9476 14.6 15.227C14.6 14.5065 14.3478 13.8921 13.8435 13.3837C13.339 12.8754 12.7265 12.6212 12.006 12.6212C11.2853 12.6212 10.6708 12.8734 10.1625 13.3777C9.65413 13.8822 9.39996 14.4947 9.39996 15.2152C9.39996 15.9359 9.65213 16.5504 10.1565 17.0587C10.661 17.5671 11.2735 17.8212 11.994 17.8212ZM6.73046 9.45373H13.9772C14.2175 9.45373 14.4195 9.3719 14.5832 9.20823C14.7469 9.04457 14.8287 8.84257 14.8287 8.60223V6.73048C14.8287 6.48998 14.7469 6.2879 14.5832 6.12423C14.4195 5.96056 14.2175 5.87873 13.9772 5.87873H6.73046C6.48996 5.87873 6.28788 5.96056 6.12421 6.12423C5.96055 6.2879 5.87871 6.48998 5.87871 6.73048V8.60223C5.87871 8.84257 5.96055 9.04457 6.12421 9.20823C6.28788 9.3719 6.48996 9.45373 6.73046 9.45373ZM4.55371 7.62398V19.4462V4.55373V7.62398Z"/>' +
     '</svg>',
-  // triangle-alert — no-edit title (the save produced nothing to write).
+  // alert-triangle — no-edit title (the save produced nothing to write). Project SVG.
   warn:
-    `<svg ${SVG_ATTRS}>` +
-    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>' +
-    '<path d="M12 9v4"/>' +
-    '<path d="M12 17h.01"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5552" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M11.9998 9.55566V12.6661M11.9998 15.7764H12.0075M10.923 5.58347L4.52736 16.6305C4.17262 17.2433 3.99524 17.5496 4.02146 17.8011C4.04433 18.0204 4.15923 18.2197 4.33758 18.3494C4.54206 18.498 4.89607 18.498 5.60409 18.498H18.3954C19.1034 18.498 19.4574 18.498 19.6619 18.3494C19.8403 18.2197 19.9552 18.0204 19.978 17.8011C20.0043 17.5496 19.8269 17.2433 19.4721 16.6305L13.0765 5.58346C12.723 4.97292 12.5463 4.66765 12.3157 4.56512C12.1146 4.47569 11.8849 4.47569 11.6838 4.56512C11.4532 4.66765 11.2765 4.97292 10.923 5.58347Z"/>' +
     '</svg>',
-  // check — applied title (write succeeded).
-  check: `<svg ${SVG_ATTRS}><path d="M20 6 9 17l-5-5"/></svg>`,
-  // octagon-alert — error title.
+  // check — applied title (write succeeded). Project SVG.
+  check:
+    `<svg ${SVG_ATTRS}>` +
+    '<path d="M20 6L9 17L4 12"/>' +
+    '</svg>',
+  // alert-octagon — error title. Project SVG (stroke 1.5; currentColor flows the title-row
+  // error class through so the icon goes red alongside the title text).
   error:
-    `<svg ${SVG_ATTRS}>` +
-    '<path d="M12 16h.01"/>' +
-    '<path d="M12 8v4"/>' +
-    '<path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M12 9V12M12 15H12.0075M4.5 9.39206V14.6079C4.5 14.7914 4.5 14.8831 4.52072 14.9694C4.5391 15.046 4.5694 15.1191 4.61052 15.1862C4.6569 15.2619 4.72176 15.3268 4.85147 15.4565L8.54353 19.1485C8.67324 19.2782 8.7381 19.3431 8.81379 19.3895C8.88089 19.4306 8.95405 19.4609 9.03058 19.4793C9.11689 19.5 9.20861 19.5 9.39206 19.5H14.6079C14.7914 19.5 14.8831 19.5 14.9694 19.4793C15.046 19.4609 15.1191 19.4306 15.1862 19.3895C15.2619 19.3431 15.3268 19.2782 15.4565 19.1485L19.1485 15.4565C19.2782 15.3268 19.3431 15.2619 19.3895 15.1862C19.4306 15.1191 19.4609 15.046 19.4793 14.9694C19.5 14.8831 19.5 14.7914 19.5 14.6079V9.39206C19.5 9.20861 19.5 9.11689 19.4793 9.03058C19.4609 8.95405 19.4306 8.88089 19.3895 8.81379C19.3431 8.7381 19.2782 8.67324 19.1485 8.54353L15.4565 4.85147C15.3268 4.72176 15.2619 4.6569 15.1862 4.61052C15.1191 4.5694 15.046 4.5391 14.9694 4.52072C14.8831 4.5 14.7914 4.5 14.6079 4.5H9.39206C9.20861 4.5 9.11689 4.5 9.03058 4.52072C8.95405 4.5391 8.88089 4.5694 8.81379 4.61052C8.7381 4.6569 8.67324 4.72176 8.54353 4.85147L4.85147 8.54353C4.72176 8.67324 4.6569 8.7381 4.61052 8.81379C4.5694 8.88089 4.5391 8.95405 4.52072 9.03058C4.5 9.11689 4.5 9.20861 4.5 9.39206Z"/>' +
     '</svg>',
-  // trash-2 — per-group Remove affordance (CSS class is still .shiage-group__remove).
+  // trash-2 — per-group Remove affordance (CSS class is still .shiage-group__remove). Lucide.
   trash:
     `<svg ${SVG_ATTRS}>` +
     '<path d="M3 6h18"/>' +
@@ -173,11 +173,12 @@ function titleSection(
   options?: { error?: boolean },
 ): HTMLElement {
   const section = el('div', 'shiage-title-section')
-  const row = el('div', 'shiage-title-row')
-  row.append(
-    iconSpan(icon, 'shiage-title-icon'),
-    el('span', `shiage-title${options?.error ? ' shiage-error' : ''}`, title),
-  )
+  // The error class lives on the title-row so both the icon and the text span inherit the
+  // red color via a single CSS rule — saves us having to thread the variant through to each
+  // child individually.
+  const rowClass = `shiage-title-row${options?.error ? ' shiage-title-row--error' : ''}`
+  const row = el('div', rowClass)
+  row.append(iconSpan(icon, 'shiage-title-icon'), el('span', 'shiage-title', title))
   section.append(row)
   if (subtitle !== undefined) section.append(el('div', 'shiage-muted', subtitle))
   return section
