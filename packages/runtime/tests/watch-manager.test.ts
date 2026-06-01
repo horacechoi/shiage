@@ -339,7 +339,11 @@ describe('createWatchManager — aggregation', () => {
     const all = manager.getAllChanges()
     const aChanges = all.find((e) => e.sourceLoc === 'A.tsx:1:1')?.changes ?? []
     const bChanges = all.find((e) => e.sourceLoc === 'B.tsx:2:2')?.changes ?? []
-    expect(aChanges).toContainEqual({ property: 'padding-left', oldValue: '16px', newValue: '24px' })
+    expect(aChanges).toContainEqual({
+      property: 'padding-left',
+      oldValue: '16px',
+      newValue: '24px',
+    })
     expect(bChanges).toContainEqual({ property: 'width', oldValue: '100px', newValue: '120px' })
     manager.stop()
   })

@@ -326,7 +326,10 @@ describe('mount', () => {
     el.style.paddingRight = '32px'
     await flushMutations()
     const live = instance.manager.getAllChanges()
-    expect(live[0]!.changes.map((c) => c.property).sort()).toEqual(['padding-left', 'padding-right'])
+    expect(live[0]!.changes.map((c) => c.property).sort()).toEqual([
+      'padding-left',
+      'padding-right',
+    ])
 
     // Untick padding-left specifically (the property row that mentions 'padding-left: 16px → 24px').
     const rows = [...instance.shadow.querySelectorAll('.shiage-prop')]

@@ -237,10 +237,7 @@ describe('createElementTracker — rebaseline', () => {
   it('does not fire any callback — the caller owns onChange notification', () => {
     // No onChange option exists on the tracker by design (the manager / wrapper batches it). This
     // test just documents that contract via the type-level absence and a smoke call.
-    const tracker = createElementTracker(
-      document.createElement('div'),
-      fromSnapshots([snap({})]),
-    )
+    const tracker = createElementTracker(document.createElement('div'), fromSnapshots([snap({})]))
     expect(() => tracker.rebaseline()).not.toThrow()
   })
 })

@@ -10,11 +10,7 @@ import { OVERLAY_CSS } from './overlay/styles'
 import { createPanel, type Panel, type ReviewElement } from './overlay/panel'
 import { createWatchManager, type WatchManager } from './watcher/watch-manager'
 import { createWsClient, type WsClient, type WebSocketLike } from './client/ws-client'
-import {
-  PROTOCOL_VERSION,
-  type PropertyChange,
-  type ServerMessage,
-} from '@shiage/core/protocol'
+import { PROTOCOL_VERSION, type PropertyChange, type ServerMessage } from '@shiage/core/protocol'
 
 /** Bumped independently of the protocol; sent in `hello`. */
 export const RUNTIME_VERSION = '0.1.0'

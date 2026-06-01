@@ -84,10 +84,7 @@ const ICONS = {
     '<path d="M11.9998 9.55566V12.6661M11.9998 15.7764H12.0075M10.923 5.58347L4.52736 16.6305C4.17262 17.2433 3.99524 17.5496 4.02146 17.8011C4.04433 18.0204 4.15923 18.2197 4.33758 18.3494C4.54206 18.498 4.89607 18.498 5.60409 18.498H18.3954C19.1034 18.498 19.4574 18.498 19.6619 18.3494C19.8403 18.2197 19.9552 18.0204 19.978 17.8011C20.0043 17.5496 19.8269 17.2433 19.4721 16.6305L13.0765 5.58346C12.723 4.97292 12.5463 4.66765 12.3157 4.56512C12.1146 4.47569 11.8849 4.47569 11.6838 4.56512C11.4532 4.66765 11.2765 4.97292 10.923 5.58347Z"/>' +
     '</svg>',
   // check — applied title (write succeeded). Project SVG.
-  check:
-    `<svg ${SVG_ATTRS}>` +
-    '<path d="M20 6L9 17L4 12"/>' +
-    '</svg>',
+  check: `<svg ${SVG_ATTRS}>` + '<path d="M20 6L9 17L4 12"/>' + '</svg>',
   // alert-octagon — error title. Project SVG (stroke 1.5; currentColor flows the title-row
   // error class through so the icon goes red alongside the title text).
   error:
@@ -274,9 +271,7 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
     switch (view.kind) {
       case 'tracking': {
         setBadgeCount(view.includedCount)
-        body.append(
-          titleSection('edit', 'Shiage', 'Edit CSS in DevTools to see changes here.'),
-        )
+        body.append(titleSection('edit', 'Shiage', 'Edit CSS in DevTools to see changes here.'))
 
         if (view.elements.length === 0) break
 
@@ -360,9 +355,7 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
     render(view) {
       renderBody(view)
       const trackingTransitionedToNonZero =
-        view.kind === 'tracking' &&
-        view.includedCount > 0 &&
-        lastTrackingIncludedCount === 0
+        view.kind === 'tracking' && view.includedCount > 0 && lastTrackingIncludedCount === 0
       const autoOpen =
         view.kind === 'saving' ||
         view.kind === 'preview' ||
