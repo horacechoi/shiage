@@ -103,6 +103,12 @@ const ICONS = {
     '<line x1="10" x2="10" y1="11" y2="17"/>' +
     '<line x1="14" x2="14" y1="11" y2="17"/>' +
     '</svg>',
+  // close — shown on the pill when the panel is open (replaces the table-edit mark via CSS).
+  // Sourced from the project's own close.svg; both fill and stroke flow from currentColor.
+  close:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor">' +
+    '<path d="M17.5996 5.92505C17.7639 5.92505 17.8659 5.97355 17.9463 6.05396C18.0265 6.13426 18.0751 6.23575 18.0752 6.39966C18.0752 6.56386 18.0266 6.66595 17.9463 6.74634L12.6924 12.0002L13.0459 12.3538L17.9463 17.2532C18.0267 17.3335 18.0752 17.4357 18.0752 17.5999C18.0752 17.7641 18.0267 17.8661 17.9463 17.9465C17.8659 18.0269 17.7639 18.0754 17.5996 18.0754C17.4355 18.0754 17.3333 18.0269 17.2529 17.9465L12.3535 13.0461L12 12.6926L6.74609 17.9465C6.66571 18.0269 6.56362 18.0754 6.39941 18.0754C6.23551 18.0754 6.13402 18.0268 6.05371 17.9465C5.97331 17.8661 5.9248 17.7641 5.9248 17.5999C5.92484 17.4357 5.97334 17.3335 6.05371 17.2532L11.3066 12.0002L10.9531 11.6467L6.05371 6.74634C5.97331 6.66594 5.9248 6.56393 5.9248 6.39966C5.92488 6.23562 5.97337 6.13429 6.05371 6.05396C6.13405 5.97362 6.23537 5.92513 6.39941 5.92505C6.56368 5.92505 6.66569 5.97355 6.74609 6.05396L11.6465 10.9534L12 11.3069L17.2529 6.05396C17.3333 5.97358 17.4355 5.92509 17.5996 5.92505Z"/>' +
+    '</svg>',
 } as const
 
 type IconKey = keyof typeof ICONS
@@ -226,18 +232,23 @@ export function createPanel(parent: ParentNode & Node, callbacks: PanelCallbacks
   const body = el('div', 'shiage-body')
   panel.appendChild(body)
 
-  // Pill: icon-only round button. A count badge (top-right) appears when there are unsaved
-  // tracked changes. The WS connection state is intentionally NOT surfaced on the pill — the
-  // dot indicator was dropped per the refined design; `setConnection` remains a no-op on this
-  // controller so mount.ts can keep calling it without coupling to an absent UI element.
-  const pillIcon = iconSpan('edit', 'shiage-pill__icon')
+  // Pill: icon-only round button. Carries BOTH the table-edit and close glyphs simultaneously
+  // — CSS `:has(.shiage-panel:not([hidden]))` on the root toggles which one is shown based on
+  // panel visibility, so the icon swap is driven entirely by the panel's `hidden` attribute
+  // (no JS reactivity needed; every place that mutates panel.hidden flows through correctly).
+  // A count badge (top-right) appears when there are unsaved tracked changes. The WS connection
+  // state is intentionally NOT surfaced on the pill — the dot indicator was dropped per the
+  // refined design; `setConnection` remains a no-op on this controller so mount.ts can keep
+  // calling it without coupling to an absent UI element.
+  const pillIconClosed = iconSpan('edit', 'shiage-pill__icon shiage-pill__icon--closed')
+  const pillIconOpen = iconSpan('close', 'shiage-pill__icon shiage-pill__icon--open')
   const pillBadge = el('span', 'shiage-pill__badge')
   pillBadge.hidden = true
   const pill = el('button', 'shiage-pill')
   pill.type = 'button'
   pill.setAttribute('aria-label', 'Shiage')
   pill.title = 'Shiage'
-  pill.append(pillIcon, pillBadge)
+  pill.append(pillIconClosed, pillIconOpen, pillBadge)
   pill.addEventListener('click', () => {
     panel.hidden = !panel.hidden
   })

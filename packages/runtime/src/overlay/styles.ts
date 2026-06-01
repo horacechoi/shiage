@@ -50,6 +50,14 @@ export const OVERLAY_CSS = `
   color: #ffffff;
 }
 .shiage-pill__icon svg { width: 100%; height: 100%; display: block; }
+/* Two icons coexist inside the pill (table-edit + close); the panel's [hidden] state — via
+   :has() on the root — decides which one displays. Default: panel hidden → show edit, hide close. */
+.shiage-pill__icon--open { display: none; }
+.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--closed { display: none; }
+.shiage-root:has(.shiage-panel:not([hidden])) .shiage-pill__icon--open {
+  display: inline-flex;
+  color: #cccccc;
+}
 .shiage-pill__badge {
   position: absolute;
   top: -6px;
@@ -82,8 +90,22 @@ export const OVERLAY_CSS = `
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2);
   padding: 16px;
   box-sizing: border-box;
+  transform-origin: bottom right;
 }
 .shiage-panel[hidden] { display: none; }
+/* Short scale+fade entry. CSS animations re-fire when the rule becomes applicable again, so
+   each open transition (i.e. removal of the [hidden] attribute) replays the keyframes. The
+   transform-origin sits at the bottom-right corner so the panel grows out of the pill. */
+.shiage-panel:not([hidden]) {
+  animation: shiage-panel-appear 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes shiage-panel-appear {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shiage-panel:not([hidden]) { animation: none; }
+}
 
 .shiage-body {
   display: flex;
