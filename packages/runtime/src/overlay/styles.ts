@@ -58,7 +58,7 @@ export const OVERLAY_CSS = `
   height: 20px;
   padding: 0 6px;
   border-radius: 9999px;
-  background: #ef4444;
+  background: #ff0000;
   color: #ffffff;
   font-size: 12px;
   font-weight: 600;
