@@ -33,3 +33,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: SUPPORTED_PROPERTIES.md is up-to-date
+        run: pnpm gen:supported && git diff --exit-code SUPPORTED_PROPERTIES.md

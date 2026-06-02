@@ -1,7 +1,27 @@
 {
   "name": "@shiage/jsx-transform",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Babel plugin that stamps data-shiage-loc source-location attributes onto JSX host elements.",
+  "keywords": [
+    "babel-plugin",
+    "jsx",
+    "tsx",
+    "source-location",
+    "data-attribute",
+    "shiage"
+  ],
+  "homepage": "https://shiage.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/horacechoi/shiage.git",
+    "directory": "packages/jsx-transform"
+  },
+  "bugs": "https://github.com/horacechoi/shiage/issues",
+  "license": "MIT",
+  "author": "Horace Choi",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

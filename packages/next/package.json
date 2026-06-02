@@ -1,7 +1,31 @@
 {
   "name": "@shiage/next",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Next.js plugin for Shiage — inspect and edit CSS in Chrome DevTools, save changes to source as Tailwind classes.",
+  "keywords": [
+    "next",
+    "nextjs",
+    "next-plugin",
+    "tailwind",
+    "tailwindcss",
+    "css",
+    "devtools",
+    "dx",
+    "webpack",
+    "shiage"
+  ],
+  "homepage": "https://shiage.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/horacechoi/shiage.git",
+    "directory": "packages/next"
+  },
+  "bugs": "https://github.com/horacechoi/shiage/issues",
+  "license": "MIT",
+  "author": "Horace Choi",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

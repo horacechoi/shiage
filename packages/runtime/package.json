@@ -1,7 +1,27 @@
 {
   "name": "@shiage/runtime",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Shiage browser runtime (Shadow DOM overlay, element picker, style watcher, diff panel) — built as a single inlinable IIFE.",
+  "keywords": [
+    "tailwind",
+    "css",
+    "devtools",
+    "shadow-dom",
+    "browser",
+    "shiage"
+  ],
+  "homepage": "https://shiage.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/horacechoi/shiage.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": "https://github.com/horacechoi/shiage/issues",
+  "license": "MIT",
+  "author": "Horace Choi",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     "./iife": "./dist/shiage-runtime.iife.js"
