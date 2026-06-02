@@ -200,7 +200,7 @@ export default function withShiage<C extends NextConfigLike>(
       {}) as { console?: MinimalConsole; [k: string]: unknown }
     next.infrastructureLogging = {
       ...infra,
-       
+
       console: buildShiageInfraConsole(infra.console ?? (console as unknown as MinimalConsole)),
     }
   }
