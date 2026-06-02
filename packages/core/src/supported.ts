@@ -5,8 +5,6 @@
 // namespaces here; and the mapper uses `kind` to choose a matching strategy and arbitrary-value
 // format, and `group` to decide directional decomposition. SUPPORTED_PROPERTIES.md is generated
 // from this table, so the docs can never drift from the code.
-//
-// The supported set is defined in SHIAGE_BUILD_PLAN.md §7.
 
 /** Tailwind theme namespaces that v1 utilities draw from. Used to scope engine enumeration. */
 export type TailwindNamespace =

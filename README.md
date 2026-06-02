@@ -190,9 +190,8 @@ pnpm --filter @shiage-example/vite-react dev   # or @shiage-example/next-app
 v0.1 — working but young. Bug reports welcome; expect occasional breaking changes
 under `0.x`. Public API will stabilize on `1.0`. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup,
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit together,
-[`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md) for the release-time human checklist, and
-[`SHIAGE_BUILD_PLAN.md`](SHIAGE_BUILD_PLAN.md) for the broader product vision.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit together, and
+[`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md) for the release-time human checklist.
 
 ## License
 
