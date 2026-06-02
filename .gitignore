@@ -15,3 +15,6 @@ coverage/
 # Agent-specific session notes + strategy doc (architecture content for humans lives in docs/ARCHITECTURE.md)
 CLAUDE.md
 SHIAGE_BUILD_PLAN.md
+
+# Launch/marketing drafts — copy-paste sources for the public announcement, kept out of the public repo
+launch/
