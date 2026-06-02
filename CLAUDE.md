@@ -91,7 +91,15 @@ validator (which only sees `Object.keys`) doesn't reject it. `<ShiageDevScripts 
 component the user drops into the App Router root layout (or Pages `_document` body): it reads the
 booted state and emits the `shiage-ws-port` meta + the inlined runtime IIFE (with
 `<\/script>` escape) in dev, or `null` + a one-shot Turbopack-hint warn otherwise.
-`examples/next-app/` is a Next 15 + Tailwind v4 demo. **Currently: Phase 7 (docs / demo / launch).**
+`examples/next-app/` is a Next 15 + Tailwind v4 demo. Phase 7's ship-ready milestone landed
+2026-06-01: MIT license, full README rewrite + per-package READMEs + tightened example READMEs +
+`docs/MANUAL_TEST.md` + `CONTRIBUTING.md`/`SECURITY.md`/GH issue+PR templates, a CI drift gate on
+`SUPPORTED_PROPERTIES.md` (`pnpm gen:supported && git diff --exit-code SUPPORTED_PROPERTIES.md`
+— note `gen:supported` with a colon, not a hyphen), Changesets-driven 0.0.0 → 0.1.0 bump on all
+five `@shiage/*` packages, repo flipped public at `github.com/horacechoi/shiage`, all five packages
+published to npm under the `shiage` org, `shiage.dev` redirect live via Namecheap. **Currently:
+Phase 7 post-public follow-up — hero video + launch posts (LinkedIn / Show HN / X / Reddit)
+deferred for a fresh session.**
 
 ## Resuming in a new session
 
