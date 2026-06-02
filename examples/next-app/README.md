@@ -1,8 +1,8 @@
 # `@shiage-example/next-app`
 
-A minimal Next.js (App Router) + Tailwind v4 demo for `@shiage/next`. Pick an element
-in the card, tweak its CSS in Chrome DevTools, save — the change is written back to
-`app/page.tsx` as Tailwind class edits.
+A minimal Next.js (App Router) + Tailwind v4 demo for `@shiage/next`. Edit any element's
+CSS in Chrome DevTools and Shiage picks it up automatically — the change is written back
+to `app/page.tsx` as Tailwind class edits.
 
 ## Run
 
@@ -21,13 +21,12 @@ pnpm --filter @shiage-example/next-app dev
 ### Try it
 
 1. Open <http://localhost:3000> in Chrome.
-2. Click the **Shiage pill** (bottom-right of the page).
-3. Pick the button that says *"Pick me & tweak my padding."*
-4. In Chrome DevTools, edit the button's `padding` from `0.5rem 1rem` to
-   `0.75rem 1.5rem`.
-5. The pill should read **"Save 2 changes."** Click it.
-6. The diff panel previews `px-4 py-2` → `px-6 py-3`. Click **Confirm**.
-7. Check [`app/page.tsx`](app/page.tsx) — the className is updated and HMR has already
+2. Right-click the button (*"Tweak my padding in DevTools"*) → **Inspect**, then edit its
+   `padding` from `0.5rem 1rem` to `0.75rem 1.5rem`.
+3. Shiage picks the change up automatically — no element to "pick" first. The **Shiage
+   pill** (bottom-right) reads **"Save 2 changes."** Click it.
+4. The diff panel previews `px-4 py-2` → `px-6 py-3`. Click **Confirm**.
+5. Check [`app/page.tsx`](app/page.tsx) — the className is updated and HMR has already
    repainted the browser.
 
 ## Layout

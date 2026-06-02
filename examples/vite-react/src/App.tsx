@@ -1,4 +1,4 @@
-// A small demo surface for the Shiage flow. Pick any element below, tweak its CSS in DevTools
+// A small demo surface for the Shiage flow. Edit any element's CSS in DevTools (right-click → Inspect)
 // (padding, color, radius, …), then "Save" — the change is written back here as Tailwind classes.
 export default function App() {
   return (
@@ -10,7 +10,7 @@ export default function App() {
           class edits — the finishing touches.
         </p>
         <button className="rounded-md bg-brand px-4 py-2 font-medium text-white">
-          Pick me &amp; tweak my padding
+          Tweak my padding in DevTools
         </button>
       </div>
     </main>

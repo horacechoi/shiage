@@ -25,9 +25,11 @@ export default defineConfig({
 })
 ```
 
-That's it. Run `pnpm dev`, open your site, click the Shiage pill (bottom-right), pick an
-element, edit its CSS in real Chrome DevTools, click **Save** — the diff panel shows the
-proposed Tailwind class edit, confirming rewrites the source file on disk, HMR repaints.
+That's it. Run `pnpm dev`, open your site, then edit any element's CSS in real Chrome
+DevTools (right-click → Inspect). Shiage picks the change up automatically — no element to
+"pick" first — and the pill (bottom-right) shows "Save N changes." Click **Save**: the
+diff panel shows the proposed Tailwind class edit, confirming rewrites the source file on
+disk, HMR repaints.
 
 The plugin is `apply: 'serve'` and `enforce: 'pre'`. It's a true no-op in production
 builds and stamps source locations before `@vitejs/plugin-react` compiles the JSX away

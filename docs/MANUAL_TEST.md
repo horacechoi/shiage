@@ -20,7 +20,7 @@ The instant-feedback path. Edits made in the **Styles** pane's `element.style` b
 mutate the element's `style` attribute directly, which the runtime's MutationObserver
 catches with zero delay.
 
-- [ ] Boot the demo. Pick the button.
+- [ ] Boot the demo. Right-click the button → Inspect.
 - [ ] In DevTools → **Elements** → **Styles**, scroll to `element.style {}`.
 - [ ] Click into it and type `padding: 0.75rem 1.5rem`.
 - [ ] **Within ~50ms** of pressing Enter, the Shiage pill should say "Save 2 changes."
@@ -32,7 +32,7 @@ The DevTools "edit an existing rule" flow does **not** mutate the element — it
 the CSSOM rule, which only reflects to `getComputedStyle`. The runtime catches this via
 its 500ms poll.
 
-- [ ] Boot the demo. Pick the button.
+- [ ] Boot the demo. Right-click the button → Inspect.
 - [ ] In DevTools → **Elements** → **Styles**, find the rule that produces the button's
       `padding` (it'll be a Tailwind utility rule like `.px-4 {…}`).
 - [ ] Edit the existing value (don't add a new declaration — edit the existing one in place).
@@ -44,7 +44,7 @@ its 500ms poll.
 If the user edits a property Shiage doesn't map (e.g. `transform`, `filter`), the diff
 panel should surface that explicitly rather than silently ignoring.
 
-- [ ] Pick the button. In DevTools, add `transform: rotate(5deg)`.
+- [ ] Inspect the button. In DevTools, add `transform: rotate(5deg)`.
 - [ ] Click Save.
 - [ ] The diff panel should list this change under an "unsupported in v1" section with
       a clear reason — never silently dropped.
@@ -55,29 +55,30 @@ Shiage's contract is editing className strings. Inline `style={…}` is a differ
 target and must surface as unsupported.
 
 - [ ] Temporarily replace the button's `className=…` in the source with `style={{ padding: '0.5rem 1rem' }}` and let HMR rebuild.
-- [ ] Pick the button. Edit `padding` in DevTools. Click Save.
+- [ ] Inspect the button. Edit `padding` in DevTools. Click Save.
 - [ ] The diff panel should show "unsupported, reason: inline style attribute, not a className" (or similar) and refuse to write.
 - [ ] Revert the source.
 
 (CSS Modules `styles.foo` and `cn(variable)` produce equivalent "unsupported, reason:
 variable reference" messages — re-test those if you've touched the className-merge code.)
 
-## 5. HMR survival
+## 5. HMR / full-reload survival
 
-A picked element should survive a full reload (the runtime persists the
-`data-shiage-loc` in `sessionStorage`).
+Tracking is ambient — there's no picked target to persist, so what's under test is that
+the runtime re-attaches and detection still works after a reload (the watch-manager
+re-discovers every stamped element; no `sessionStorage`).
 
-- [ ] Pick the button. The pill shows the picked state.
 - [ ] Trigger a full reload (Cmd-R in Chrome — not soft HMR).
-- [ ] On reload, the pill should re-mount and the picked target should restore. Editing
-      should still update the same source file.
+- [ ] The Shiage pill re-mounts and the watch-manager silently re-discovers the stamped elements.
+- [ ] Right-click the button → Inspect, edit `padding` in DevTools — the pill updates to
+      "Save 1 change", and saving still rewrites the correct source file.
 
 ## 6. Custom theme token round-trip
 
 Both demos define a `--color-brand` token to verify the v3/v4 ThemeSource resolves
 against the user's *real* theme, not Tailwind's defaults.
 
-- [ ] Pick the button. In DevTools, change `background-color` to something close to but
+- [ ] Inspect the button. In DevTools, change `background-color` to something close to but
       different from `--color-brand` (say, shift the green channel by 30 units).
 - [ ] Save. The diff panel should propose either an arbitrary `bg-[#…]` class (if outside
       the nearest-color threshold) or a snapped existing theme class with a visible warning.
@@ -87,12 +88,12 @@ against the user's *real* theme, not Tailwind's defaults.
 
 The runtime client uses exponential backoff to reconnect if the dev server restarts.
 
-- [ ] Boot the demo. Pick an element.
+- [ ] Boot the demo. Inspect the button and make an edit so a change is staged.
 - [ ] Stop the dev server (`Ctrl-C`).
 - [ ] Wait ~5s. The pill should indicate disconnected state.
 - [ ] Restart the dev server.
 - [ ] Within ~5s of the server being back, the pill reconnects without a page reload.
-      Picked state and save staging both survive.
+      Tracked changes and save staging both survive.
 
 ## 8. Both frameworks, both Tailwind majors
 

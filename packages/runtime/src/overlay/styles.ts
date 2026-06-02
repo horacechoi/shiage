@@ -344,19 +344,6 @@ export const OVERLAY_CSS = `
 }
 .shiage-group__head .shiage-check { width: 16px; height: 16px; }
 
-/* ── Picker highlight ──
-   The element-picker draws a translucent rectangle over the hovered/picked element. Unchanged
-   from the previous design. */
-.shiage-highlight {
-  position: fixed;
-  pointer-events: none;
-  z-index: 2147483646;
-  box-sizing: border-box;
-  border: 2px solid #2563eb;
-  background: rgba(37, 99, 235, 0.12);
-  border-radius: 2px;
-}
-
 /* ── Diff blocks (preview view) ──
    One block per SourceDiff: a file header (monospace, black background) followed by add/del
    lines with colored gutters. The container's overflow-clip and rounded corners hide the lines

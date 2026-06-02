@@ -7,8 +7,9 @@ source as Tailwind class edits — the "last 5%" of building a frontend with an 
 The flow:
 
 ```
-pnpm dev → pick an element → edit CSS in real DevTools → "Save N changes" → diff preview
-        → confirm → the plugin rewrites the JSX/TSX file → framework HMR repaints
+pnpm dev → edit an element's CSS in real DevTools → Shiage detects it (no pick step)
+        → "Save N changes" → diff preview → confirm → the plugin rewrites the JSX/TSX file
+        → framework HMR repaints
 ```
 
 ---
@@ -53,7 +54,7 @@ interface ThemeSource {
 | Package | Role | Runtime |
 |---|---|---|
 | `@shiage/core` | CSS→Tailwind mapper, JSX AST editor, WebSocket protocol, diff, server plumbing | Node, `"sideEffects": false` |
-| `@shiage/runtime` | Shadow-DOM overlay, picker, watcher, diff renderer, WS client | Browser-only IIFE |
+| `@shiage/runtime` | Shadow-DOM overlay, ambient multi-element watcher, diff renderer, WS client | Browser-only IIFE |
 | `@shiage/jsx-transform` | Babel plugin that stamps `data-shiage-loc` on lowercase host elements | Babel plugin |
 | `@shiage/vite` | Vite plugin (`apply: 'serve'`, `enforce: 'pre'`) | Node |
 | `@shiage/next` | Next.js plugin (webpack/Babel path; Turbopack is v1.1) | Node |
@@ -68,7 +69,7 @@ IIFE without pulling Node code.
 
 ---
 
-## How the pick→edit→save→write flow works
+## How the edit→detect→save→write flow works
 
 **Source-location stamping** (`@shiage/jsx-transform`): a Babel plugin visits every
 `JSXOpeningElement` and stamps `data-shiage-loc="${relPath}:${line}:${col}"` on
@@ -85,15 +86,21 @@ survives into the DOM. Production builds disable it entirely.
 `all: initial; z-index: 2147483647` and a **closed** Shadow DOM, so Tailwind preflight
 can't reach in. One `<style>` element holds all overlay CSS.
 
-**Picker:** capture-phase `mousemove` / `click` / `keydown`. A separate
-`position: fixed; pointer-events: none` highlight layer tracks the hovered element via
-`getBoundingClientRect`. Click resolves the nearest `data-shiage-loc` ancestor; Esc
-cancels.
+**Ambient tracking (no picker):** there is no "pick" step. A watch-manager auto-discovers
+every `[data-shiage-loc]` element at mount and reconciles the registry on DOM changes
+(HMR, navigation, conditional renders) via a document-wide structural `MutationObserver`.
+Editing any element's CSS in DevTools is detected on the spot; edits across multiple
+elements accumulate, and the panel groups the pending changes by element with per-element
+and per-property exclude toggles before a single batched save.
 
-**Watcher — dual mechanism** (the load-bearing detection insight):
+**Watcher — dual mechanism** (the load-bearing detection insight). The manager owns *one*
+shared 500ms poll and *one* document-wide attribute `MutationObserver` across every tracked
+element; the per-element diff logic lives in a reusable `ElementTracker`.
 
-- A **`MutationObserver`** on `style`/`class` attributes catches **inline DevTools edits
-  instantly** — these mutate the element's own `style` attribute.
+- The **`MutationObserver`** on the `style` attribute catches **inline DevTools edits
+  instantly** — these mutate the element's own `style` attribute. (It filters to `style`
+  only; an app's `class` swaps are ambient noise, and a genuine class-driven computed
+  change still surfaces via the poll.)
 - A **500ms `getComputedStyle` poll** catches **stylesheet-rule edits**, which don't
   mutate the element at all (they change the CSSOM rule, reflected only via
   `getComputedStyle`). This was experimentally verified — no other mechanism catches
@@ -115,14 +122,16 @@ auto-sized element yields a clean single-class edit instead of a spurious `w-[Np
 
 **Mapper → class edits** (`@shiage/core`): the **directional-shorthand heuristic** is
 the correctness invariant. Changes are grouped by physical group (padding / margin /
-border-width / border-radius):
+border-width / border-radius / gap), and the *changed* sides collapse to the smallest
+covering class:
 
 - All four sides same → shorthand (`p-6`)
 - Both sides of an axis → axis class (`px-6`)
 - Single side → directional (`pl-6`)
-- If a broader existing token like `p-4` covers a side being changed, **decompose** it
-  into the 3 unchanged sides plus the new one (`pt-4 pr-4 pb-4 pl-6`), then re-collapse
-  any opposite pairs that now match.
+- A broader existing token like `p-4` is **not** decomposed. A single-side change just
+  *adds* `pl-6` and relies on Tailwind's cascade ordering (directional beats shorthand),
+  so `p-4 pl-6` resolves correctly. An existing token is removed only when *every* side
+  it sets was among the changed sides.
 
 **The mapper never silently changes a side the user didn't touch.** `classProducingProperty`
 asks `source.classToDecls` which longhands each existing token sets — authoritative, not
