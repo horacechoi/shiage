@@ -1,7 +1,7 @@
 # @shiage/runtime
 
 Browser runtime for [Shiage](https://shiage.dev) — the closed-Shadow-DOM overlay,
-element picker, dual-mechanism style watcher, diff panel, and WebSocket client. Built as
+ambient multi-element watcher, diff panel, and WebSocket client. Built as
 a single inlinable IIFE (`dist/shiage-runtime.iife.js`, exposed at `exports["./iife"]`).
 
 > **You almost never install this directly.** The
@@ -16,14 +16,16 @@ a single inlinable IIFE (`dist/shiage-runtime.iife.js`, exposed at `exports["./i
 - Idempotent `mount()` (guarded on `window.__SHIAGE__` so HMR re-injection is safe).
 - A `data-shiage-host` div with `all: initial; z-index: 2147483647` and a closed Shadow
   DOM, so Tailwind preflight can't reach in.
-- Capture-phase picker with a separate fixed-position highlight layer.
-- **Dual watcher:** `MutationObserver` on `style`/`class` catches inline DevTools edits
-  instantly; a 500ms `getComputedStyle` poll catches stylesheet-rule edits that don't
-  mutate the element. Sub-pixel + two-poll-stability guards keep transitions from
-  triggering false positives.
+- **Ambient watch-manager:** auto-tracks *every* stamped element — no "pick" step. Edit
+  anything in Chrome DevTools and it's detected; edits across multiple elements batch into
+  one save, grouped by element in the panel.
+- **Dual detection:** one document-wide `MutationObserver` on the `style` attribute
+  catches inline DevTools edits instantly; one shared 500ms `getComputedStyle` poll
+  catches stylesheet-rule edits that don't mutate the element. Sub-pixel +
+  two-poll-stability guards keep transitions from triggering false positives.
 - Reconnecting WebSocket client; save IDs correlate diff previews to confirms.
-- `sessionStorage` persistence of the picked `data-shiage-loc` so the target survives a
-  full reload (HMR survival).
+- Survives HMR and full reloads by re-discovering stamped elements automatically — no
+  `sessionStorage`, no re-pick.
 
 ## License
 

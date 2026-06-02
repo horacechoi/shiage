@@ -14,12 +14,13 @@ off, padding's wrong, the border-radius needs a nudge, that color isn't quite th
 shade you wanted. Shiage is for that last 5%.
 
 It's a Vite and Next.js plugin (with an injected browser runtime). You open your
-site, pick an element, edit CSS values directly in Chrome DevTools, and click Save —
-Shiage rewrites the JSX file as Tailwind class edits, HMR repaints. Your DevTools
-nudges become real source-code changes.
+site, edit CSS values directly in Chrome DevTools — right-click → Inspect, no element to
+"pick" first — and Shiage picks the change up automatically. Click Save and it rewrites
+the JSX file as Tailwind class edits, HMR repaints. Your DevTools nudges become real
+source-code changes.
 
 ```
-pick element  →  edit CSS in real DevTools  →  Save 3 changes  →  diff preview  →  confirm  →  file rewritten  →  HMR
+edit CSS in real DevTools  →  Shiage detects it  →  Save 3 changes  →  diff preview  →  confirm  →  file rewritten  →  HMR
 ```
 
 > _A 30s demo video is coming with the public launch._
@@ -44,9 +45,10 @@ export default defineConfig({
 })
 ```
 
-`pnpm dev`, open the URL, click the Shiage pill (bottom-right), pick an element, edit
-its CSS in DevTools. The plugin is `apply: 'serve'` — a true no-op in production
-builds.
+`pnpm dev`, open the URL, then edit any element's CSS in Chrome DevTools (right-click →
+Inspect). Shiage picks the change up automatically and surfaces it in the pill
+(bottom-right) — no element to pick first. The plugin is `apply: 'serve'` — a true no-op
+in production builds.
 
 ## Quick start — Next.js
 
@@ -180,7 +182,7 @@ pnpm --filter @shiage-example/vite-react dev   # or @shiage-example/next-app
 | [`@shiage/vite`](packages/vite) | Vite plugin — start here for Vite projects |
 | [`@shiage/next`](packages/next) | Next.js plugin (webpack/Babel; Turbopack v1.1) |
 | [`@shiage/core`](packages/core) | Framework-agnostic mapper, AST editor, WS protocol, diff |
-| [`@shiage/runtime`](packages/runtime) | Browser runtime IIFE — picker, watcher, diff panel |
+| [`@shiage/runtime`](packages/runtime) | Browser runtime IIFE — ambient watcher, diff panel |
 | [`@shiage/jsx-transform`](packages/jsx-transform) | Babel plugin that stamps `data-shiage-loc` |
 
 ---
