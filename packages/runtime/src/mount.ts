@@ -10,6 +10,7 @@ import { OVERLAY_CSS } from './overlay/styles'
 import { createPanel, type Panel, type ReviewElement } from './overlay/panel'
 import { createWatchManager, type WatchManager } from './watcher/watch-manager'
 import { createWsClient, type WsClient, type WebSocketLike } from './client/ws-client'
+import { uninstallProvenance } from './provenance'
 import { PROTOCOL_VERSION, type PropertyChange, type ServerMessage } from '@shiage/core/protocol'
 
 /** Bumped independently of the protocol; sent in `hello`. */
@@ -529,7 +530,13 @@ export function mount(options: MountOptions = {}): ShiageInstance {
   // also each HMR-injected stamped element) — ~2 frames is the conventional "layout settled"
   // budget; any actual user edit during that window is preserved (the rebaseline is skipped if
   // the tracker already saw a confirmed change). ──
-  const manager = createWatchManager({ onChange: renderTracking, settleMs: 32 })
+  // `settleMs` absorbs initial layout/style-load deltas; `immediateDebounceMs` collapses a
+  // frame-by-frame inline-style animation into one ingest. ~2 frames each.
+  const manager = createWatchManager({
+    onChange: renderTracking,
+    settleMs: 32,
+    immediateDebounceMs: 32,
+  })
 
   // ── WS client ──
   let ws: WsClient | null = null
@@ -559,6 +566,7 @@ export function mount(options: MountOptions = {}): ShiageInstance {
     ws?.close()
     panel.destroy()
     host.remove()
+    uninstallProvenance()
     delete window.__SHIAGE__
   }
 

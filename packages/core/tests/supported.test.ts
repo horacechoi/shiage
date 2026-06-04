@@ -3,7 +3,10 @@ import {
   SUPPORTED_PROPERTIES,
   SUPPORTED_PROPERTY_LIST,
   SUPPORTED_NAMESPACES,
+  WATCHED_PROPERTY_LIST,
+  SHORTHAND_PROPERTIES,
   isSupportedProperty,
+  watchedPropertyFor,
 } from '../src/supported'
 
 describe('SUPPORTED_PROPERTIES', () => {
@@ -72,5 +75,41 @@ describe('SUPPORTED_PROPERTIES', () => {
     for (const meta of Object.values(SUPPORTED_PROPERTIES)) {
       expect(SUPPORTED_NAMESPACES).toContain(meta.namespace)
     }
+  })
+})
+
+describe('WATCHED_PROPERTY_LIST', () => {
+  it('is the supported set minus the redundant shorthands', () => {
+    expect(WATCHED_PROPERTY_LIST).toEqual(
+      SUPPORTED_PROPERTY_LIST.filter((p) => !SHORTHAND_PROPERTIES.has(p)),
+    )
+    for (const shorthand of SHORTHAND_PROPERTIES) {
+      expect(WATCHED_PROPERTY_LIST).not.toContain(shorthand)
+    }
+  })
+})
+
+describe('watchedPropertyFor', () => {
+  it('maps per-side border-color longhands (which transitions/keyframes fire) to border-color', () => {
+    // The watcher diffs the `border-color` shorthand, but CSS transitions fire per-longhand — so an
+    // animated `border-bottom-color` must be attributed to `border-color`.
+    expect(watchedPropertyFor('border-top-color')).toBe('border-color')
+    expect(watchedPropertyFor('border-right-color')).toBe('border-color')
+    expect(watchedPropertyFor('border-bottom-color')).toBe('border-color')
+    expect(watchedPropertyFor('border-left-color')).toBe('border-color')
+  })
+
+  it('passes through watched longhands unchanged', () => {
+    expect(watchedPropertyFor('opacity')).toBe('opacity')
+    expect(watchedPropertyFor('background-color')).toBe('background-color')
+    expect(watchedPropertyFor('border-color')).toBe('border-color')
+    expect(watchedPropertyFor('padding-left')).toBe('padding-left')
+  })
+
+  it('returns null for properties that do not affect any watched property', () => {
+    expect(watchedPropertyFor('transform')).toBeNull()
+    expect(watchedPropertyFor('filter')).toBeNull()
+    // Redundant shorthands are not watched directly (their longhands are).
+    expect(watchedPropertyFor('padding')).toBeNull()
   })
 })

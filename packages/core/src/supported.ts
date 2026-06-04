@@ -121,6 +121,42 @@ export function isSupportedProperty(property: string): property is SupportedProp
   return Object.prototype.hasOwnProperty.call(SUPPORTED_PROPERTIES, property)
 }
 
+// Box-model/gap/radius shorthands. `getComputedStyle` resolves every value to its longhands, so a
+// shorthand's computed string is just a redundant reflection of them — editing `padding-left` also
+// "changes" `padding`. The watcher diffs longhands only and skips these to avoid double-counting;
+// the provenance instrumentation treats a write to one as affecting its (watched) longhands.
+export const SHORTHAND_PROPERTIES: ReadonlySet<SupportedProperty> = new Set<SupportedProperty>([
+  'padding',
+  'margin',
+  'gap',
+  'border-width',
+  'border-radius',
+])
+
+/** The properties the watcher actually diffs: every supported one except the shorthands above. */
+export const WATCHED_PROPERTY_LIST: readonly SupportedProperty[] = SUPPORTED_PROPERTY_LIST.filter(
+  (p) => !SHORTHAND_PROPERTIES.has(p),
+)
+
+// CSS transitions and the Web Animations API operate on longhands, so a `border-color` transition
+// fires events / keyframes for `border-{side}-color` — none of which Shiage watches (it watches the
+// `border-color` shorthand, whose computed value those longhands drive). Map them back.
+const BORDER_COLOR_LONGHANDS: ReadonlySet<string> = new Set([
+  'border-top-color',
+  'border-right-color',
+  'border-bottom-color',
+  'border-left-color',
+])
+
+/** The watched property an animated/transitioned property name maps to (e.g. `border-top-color` →
+ * `border-color`), or null when it doesn't affect any watched property (e.g. `transform`). Used to
+ * attribute animation events and keyframes to the property the watcher actually diffs. */
+export function watchedPropertyFor(property: string): SupportedProperty | null {
+  if (isSupportedProperty(property) && !SHORTHAND_PROPERTIES.has(property)) return property
+  if (BORDER_COLOR_LONGHANDS.has(property)) return 'border-color'
+  return null
+}
+
 /** The unique set of namespaces v1 properties draw from; drives engine enumeration. */
 export const SUPPORTED_NAMESPACES: readonly TailwindNamespace[] = [
   ...new Set(Object.values(SUPPORTED_PROPERTIES).map((meta) => meta.namespace)),

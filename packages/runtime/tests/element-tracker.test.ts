@@ -241,3 +241,184 @@ describe('createElementTracker — rebaseline', () => {
     expect(() => tracker.rebaseline()).not.toThrow()
   })
 })
+
+// A `consumeProvenance` that reports markers on its first call, then nothing — matching the real
+// consume-once store.
+const onceProvenance = (prov: { props: Set<SupportedProperty>; broad: boolean }) => {
+  let used = false
+  return () => {
+    if (used) return { props: new Set<SupportedProperty>(), broad: false }
+    used = true
+    return prov
+  }
+}
+const noProvenance = () => ({ props: new Set<SupportedProperty>(), broad: false })
+const notAnimating = () => new Set<SupportedProperty>()
+
+describe('createElementTracker — provenance (origin instrumentation)', () => {
+  it('absorbs a programmatic inline write instead of confirming it', () => {
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([snap({ opacity: '0' }), snap({ opacity: '1' }), snap({ opacity: '1' })]),
+      consumeProvenance: onceProvenance({ props: new Set(['opacity']), broad: false }),
+      getAnimatingProperties: notAnimating,
+    })
+    // opacity 0→1 but it carries a style-write marker → absorbed into the baseline, not recorded.
+    expect(tracker.ingest(true)).toBe(false)
+    expect(tracker.getCurrentChanges()).toEqual([])
+    // And it does not resurface on a later poll once the marker is gone.
+    expect(tracker.ingest(false)).toBe(false)
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+
+  it('no provenance → a divergence is confirmed as a DevTools edit (control)', () => {
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([snap({ opacity: '0' }), snap({ opacity: '1' })]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: notAnimating,
+    })
+    expect(tracker.ingest(true)).toBe(true)
+    expect(tracker.getCurrentChanges()).toEqual([
+      { property: 'opacity', oldValue: '0', newValue: '1' },
+    ])
+  })
+
+  it('a broad class/attr marker absorbs a non-inline change but preserves a DevTools inline edit', () => {
+    const el = document.createElement('div')
+    el.style.paddingLeft = '24px' // authored inline (the deliberate-edit signal); install not run → no style marker
+    document.body.appendChild(el)
+    const tracker = createElementTracker(el, {
+      ...fromSnapshots([
+        snap({ 'padding-left': '16px', opacity: '0' }),
+        snap({ 'padding-left': '24px', opacity: '1' }),
+      ]),
+      consumeProvenance: onceProvenance({ props: new Set(), broad: true }),
+      getAnimatingProperties: notAnimating,
+    })
+    tracker.ingest(true)
+    // padding-left is authored inline with no style marker → a real edit (kept); the class-driven
+    // opacity change is absorbed.
+    expect(tracker.getCurrentChanges()).toEqual([
+      { property: 'padding-left', oldValue: '16px', newValue: '24px' },
+    ])
+  })
+
+  it('a broad marker absorbs an inline var() property (app-driven, not a protected edit)', () => {
+    // An element whose inline `opacity` is a `var()` expression (e.g. `opacity: var(--o)`), animated
+    // by a custom-property write (which marks broad). The var() value is app-driven, so it must NOT
+    // be treated as a protected DevTools edit — the opacity change is absorbed, not recorded.
+    const el = document.createElement('div')
+    el.style.setProperty('opacity', 'var(--o, 1)')
+    document.body.appendChild(el)
+    const tracker = createElementTracker(el, {
+      ...fromSnapshots([snap({ opacity: '0.2' }), snap({ opacity: '0.9' })]),
+      consumeProvenance: onceProvenance({ props: new Set(), broad: true }),
+      getAnimatingProperties: notAnimating,
+    })
+    tracker.ingest(true)
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+})
+
+describe('createElementTracker — animation awareness', () => {
+  it('does not confirm a property under an active animation (probe veto)', () => {
+    let animating = true
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([snap({ opacity: '0' }), snap({ opacity: '1' }), snap({ opacity: '1' })]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: () =>
+        animating ? new Set<SupportedProperty>(['opacity']) : new Set(),
+    })
+    expect(tracker.ingest(true)).toBe(false) // animating → absorbed
+    expect(tracker.getCurrentChanges()).toEqual([])
+    animating = false
+    tracker.ingest(false)
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+
+  it('absorbs the value while the probe reports animating, so the settled value is never recorded', () => {
+    // getAnimations() reports a transition until its end time, by which point the value is final —
+    // so the last absorb (while still "animating") captures the settled value; once the probe goes
+    // empty there is no divergence to confirm.
+    let animating = true
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([
+        snap({ opacity: '0' }), // baseline
+        snap({ opacity: '0.3' }), // mid-animation (absorbed)
+        snap({ opacity: '1' }), // final value, probe still reports animating → absorbed
+        snap({ opacity: '1' }),
+      ]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: () =>
+        animating ? new Set<SupportedProperty>(['opacity']) : new Set(),
+    })
+    tracker.ingest(true) // 0.3 absorbed
+    tracker.ingest(true) // 1 absorbed (still animating)
+    animating = false
+    tracker.ingest(false) // probe empty, value == baseline (1) → nothing
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+
+  it('taint(property) blocks confirmation and drops an already-confirmed change', () => {
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([snap({ opacity: '0' }), snap({ opacity: '1' }), snap({ opacity: '1' })]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: notAnimating,
+    })
+    expect(tracker.ingest(true)).toBe(true)
+    expect(tracker.getCurrentChanges()).toHaveLength(1)
+    expect(tracker.taint('opacity')).toBe(true) // dropped the confirmed entry
+    expect(tracker.getCurrentChanges()).toEqual([])
+    // While tainted, a re-read of the same value is not re-confirmed.
+    expect(tracker.ingest(true)).toBe(false)
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+
+  it('taint("all") blocks every property until the probe reports the element stopped', () => {
+    let animating = true
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([
+        snap({ opacity: '0' }), // baseline
+        snap({ opacity: '1' }), // absorbed (taintedAll + probe 'all')
+        snap({ opacity: '1' }), // probe goes empty → taint clears, 1 becomes the baseline
+        snap({ opacity: '0.5' }), // a genuine later edit
+      ]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: () => (animating ? 'all' : new Set<SupportedProperty>()),
+    })
+    tracker.taint('all')
+    expect(tracker.hasTaint()).toBe(true)
+    tracker.ingest(true) // opacity 0→1 absorbed; probe still 'all' → taint persists
+    expect(tracker.getCurrentChanges()).toEqual([])
+    expect(tracker.hasTaint()).toBe(true)
+    animating = false
+    tracker.ingest(true) // probe empty → taintedAll cleared
+    expect(tracker.hasTaint()).toBe(false)
+    tracker.ingest(true) // a fresh divergence now confirms as a real edit
+    expect(tracker.getCurrentChanges()).toEqual([
+      { property: 'opacity', oldValue: '1', newValue: '0.5' },
+    ])
+  })
+
+  it('a tainted property absorbs its settled value once the probe reports it stopped (no ingest during the transition)', () => {
+    // The CSS-variable-driven transition case: a short transition taints the property and ends
+    // before any poll lands. The event-seeded taint persists until the probe clears it, so the
+    // first ingest after it stops absorbs the settled value instead of confirming a phantom.
+    let animating = true
+    const tracker = createElementTracker(document.createElement('div'), {
+      ...fromSnapshots([
+        snap({ 'background-color': 'rgb(0, 0, 0)' }), // baseline (sampled mid-cycle, "active")
+        snap({ 'background-color': 'rgb(255, 255, 255)' }), // settled "idle" value
+        snap({ 'background-color': 'rgb(255, 255, 255)' }),
+      ]),
+      consumeProvenance: noProvenance,
+      getAnimatingProperties: () =>
+        animating ? new Set<SupportedProperty>(['background-color']) : new Set(),
+    })
+    tracker.taint('background-color') // transitionrun — no ingest runs during the transition
+    animating = false // transition ended; probe now reports stopped
+    tracker.ingest(false) // tainted → absorb the settled value, then un-taint
+    expect(tracker.getCurrentChanges()).toEqual([])
+    tracker.ingest(false) // no resurface
+    expect(tracker.getCurrentChanges()).toEqual([])
+  })
+})

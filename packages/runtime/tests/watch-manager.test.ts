@@ -5,9 +5,10 @@
 // per-element diff math, we inject a fake `createTracker` so the tracker's internals are not the
 // thing under test — element-tracker.test.ts already pins those.
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { createWatchManager } from '../src/watcher/watch-manager'
+import { createWatchManager, type AnimationEventHandlers } from '../src/watcher/watch-manager'
 import type { ElementTracker } from '../src/watcher/element-tracker'
 import type { PropertyChange } from '@shiage/core/protocol'
+import type { SupportedProperty } from '@shiage/core/supported'
 
 // Let happy-dom flush both the MutationObserver microtask and the structural-sync microtask.
 const flushMutations = async () => {
@@ -25,6 +26,7 @@ function fakeTracker(initial: { changes?: PropertyChange[]; nextChanged?: boolea
     nextChanged: initial.nextChanged ?? false,
     ingestCalls: [] as boolean[],
     rebaselineCalls: 0,
+    taintCalls: [] as Array<SupportedProperty | 'all'>,
     ingest(immediate: boolean): boolean {
       this.ingestCalls.push(immediate)
       const ret = this.nextChanged
@@ -33,6 +35,13 @@ function fakeTracker(initial: { changes?: PropertyChange[]; nextChanged?: boolea
     },
     getCurrentChanges(): PropertyChange[] {
       return this.changes
+    },
+    taint(property: SupportedProperty | 'all'): boolean {
+      this.taintCalls.push(property)
+      return false
+    },
+    hasTaint(): boolean {
+      return false
     },
     rebaseline(): void {
       this.rebaselineCalls += 1
@@ -498,5 +507,81 @@ describe('createWatchManager — poll path', () => {
     const polls = tracker.ingestCalls.filter((immediate) => immediate === false)
     expect(polls.length).toBe(2)
     manager.stop()
+  })
+})
+
+describe('createWatchManager — animation events', () => {
+  // Drive animation starts deterministically through the injectable subscriber (happy-dom does not
+  // dispatch transition/animation events). The manager only taints on START; the tracker's probe is
+  // the authority on when an animation stops, so there is no end/settle handling to test here.
+  function setup(extra: Parameters<typeof createWatchManager>[0] = {}) {
+    const el = stamped('A.tsx:1:1')
+    document.body.append(el)
+    let tracker!: ReturnType<typeof fakeTracker>
+    let handlers!: AnimationEventHandlers
+    let teardownCalls = 0
+    const onChange = vi.fn()
+    const manager = createWatchManager({
+      pollMs: 1_000_000,
+      onChange,
+      createTracker: (e) => {
+        tracker = fakeTracker()
+        tracker.element = e
+        return tracker as unknown as ElementTracker
+      },
+      animationEvents: (h) => {
+        handlers = h
+        return () => {
+          teardownCalls += 1
+        }
+      },
+      ...extra,
+    })
+    return {
+      el,
+      manager,
+      onChange,
+      get tracker() {
+        return tracker
+      },
+      get handlers() {
+        return handlers
+      },
+      get teardownCalls() {
+        return teardownCalls
+      },
+    }
+  }
+
+  it('taints the tracked element on animation start', () => {
+    const s = setup()
+    s.handlers.onStart(s.el, 'opacity')
+    expect(s.tracker.taintCalls).toEqual(['opacity'])
+    s.manager.stop()
+  })
+
+  it('attributes an animation event on a child to the stamped ancestor', () => {
+    const s = setup()
+    const child = document.createElement('span')
+    s.el.appendChild(child)
+    s.handlers.onStart(child, 'opacity')
+    expect(s.tracker.taintCalls).toEqual(['opacity'])
+    s.manager.stop()
+  })
+
+  it('ignores animation events on elements that are not tracked', () => {
+    const s = setup()
+    const stray = document.createElement('div') // no data-shiage-loc
+    document.body.appendChild(stray)
+    s.handlers.onStart(stray, 'opacity')
+    expect(s.tracker.taintCalls).toEqual([])
+    s.manager.stop()
+  })
+
+  it('tears down the animation-event subscription on stop()', () => {
+    const s = setup()
+    expect(s.teardownCalls).toBe(0)
+    s.manager.stop()
+    expect(s.teardownCalls).toBe(1)
   })
 })
