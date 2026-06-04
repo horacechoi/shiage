@@ -1,0 +1,53 @@
+name: Release
+
+# On every push to main, the Changesets action does one of two things:
+#   • if there are pending changesets → opens/updates a "Version Packages" PR (bumps versions,
+#     writes changelogs, deletes the consumed changesets);
+#   • if a "Version Packages" PR was just merged (no pending changesets, versions already bumped) →
+#     builds and publishes the changed packages to npm via `pnpm release`.
+# So a normal release is: merge your feature PR (with a changeset) → merge the auto-opened Version
+# PR → packages publish. No manual `npm publish` ever.
+
+on:
+  push:
+    branches: [main]
+
+# Never run two releases at once (a fast second merge could publish a half-built tree).
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write # push the version commit / create tags
+  pull-requests: write # open the "Version Packages" PR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # version is derived from `packageManager` in package.json (matches ci.yml)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Authenticate to npm for `changeset publish`. NPM_TOKEN must be an npm *Automation* token
+      # (bypasses 2FA) with publish rights to the @shiage scope — see RELEASING.md.
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create Release PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages # `changeset version`
+          publish: pnpm release # `pnpm build && changeset publish`
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
