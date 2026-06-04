@@ -1,15 +1,30 @@
 // One element's CSS-change state machine, with no timers and no observers — the manager (or the
 // single-element wrapper) decides WHEN to call `ingest`, and the tracker just diffs a freshly-read
-// snapshot against its baseline and decides what passes the stability guard. Everything that was
-// closure-local in the original `createWatcher` lives here, in the same shape: a `baseline` of
-// computed values at start, a `confirmed` set of values that have settled away from baseline (past
-// the two-poll guard, or accepted immediately on a MutationObserver tick), a `lastPoll` snapshot
-// for the guard, and the box-model dimension-suppression in `getCurrentChanges`. The split exists
-// so a single shared poll + shared MutationObserver in the manager can drive N elements without N
-// timers — see watch-manager.ts.
-import { SUPPORTED_PROPERTY_LIST, type SupportedProperty } from '@shiage/core/supported'
+// snapshot against its baseline and decides what is a genuine user edit. A change is confirmed only
+// if it has NO page-origin provenance:
+//
+//   • a programmatic inline write (provenance, from the patched style APIs — see provenance.ts),
+//   • a class/attribute change ("broad" provenance),
+//   • an active CSS animation/transition or Web Animation. The `getAnimatingProperties` probe
+//     (`getAnimations()`) is the authority on what's animating right now; CSS transition/animation
+//     events additionally pre-`taint` a property so that a transition which starts AND ends between
+//     two polls is still absorbed (its taint persists until the probe confirms it has stopped).
+//
+// Anything page-origin is *absorbed* into the baseline (so it neither surfaces now nor resurfaces on
+// a later poll); anything left is a DevTools edit, which goes through the original two-poll guard.
+// The split from the manager exists so a single shared poll + observers can drive N elements — see
+// watch-manager.ts.
+import {
+  WATCHED_PROPERTY_LIST,
+  watchedPropertyFor,
+  type SupportedProperty,
+} from '@shiage/core/supported'
 import type { PropertyChange } from '@shiage/core/protocol'
 import { valuesEqual } from './normalize'
+import {
+  consumeProvenance as defaultConsumeProvenance,
+  type ElementProvenance,
+} from '../provenance'
 
 type Snapshot = Map<SupportedProperty, string>
 
@@ -28,40 +43,85 @@ const DIMENSION_PROPERTIES: ReadonlySet<string> = new Set([
   'max-height',
 ])
 
-// Box-model/gap/radius shorthands. `getComputedStyle` resolves every value to its longhands, so a
-// shorthand's computed string is just a redundant reflection of them — editing `padding-left` also
-// "changes" `padding`. The mapper recombines longhands into shorthand classes itself, so the
-// tracker diffs longhands only and skips these to avoid double-counting the same edit.
-const SHORTHAND_PROPERTIES: ReadonlySet<string> = new Set([
-  'padding',
-  'margin',
-  'gap',
-  'border-width',
-  'border-radius',
-])
+const EMPTY_ANIMATING: ReadonlySet<SupportedProperty> = new Set()
 
-// The properties the tracker actually diffs: every supported one except the shorthands above.
-const WATCHED_PROPERTIES = SUPPORTED_PROPERTY_LIST.filter((p) => !SHORTHAND_PROPERTIES.has(p))
+/** Currently-animating watched properties, or `'all'` when the set can't be resolved. */
+export type AnimatingProperties = ReadonlySet<SupportedProperty> | 'all'
 
 export interface ElementTrackerOptions {
   /** Snapshot every supported property's current computed value. Injectable for tests; defaults to
    * a single `getComputedStyle(element)` read per call. */
   readAll?: () => Snapshot
+  /** Read+clear the element's programmatic-mutation markers. Injectable for tests; defaults to the
+   * real provenance store (empty unless `installProvenance()` ran). */
+  consumeProvenance?: (el: Element) => ElementProvenance
+  /** The watched properties currently under an active animation/transition on this element, or
+   * `'all'`. Injectable for tests; defaults to reading `element.getAnimations()` (empty when
+   * unavailable, e.g. happy-dom). */
+  getAnimatingProperties?: () => AnimatingProperties
 }
 
 export interface ElementTracker {
   readonly element: Element
-  /** Read a fresh snapshot, diff against baseline, and update the confirmed set under the right
-   * stability rule. `immediate=true` (MutationObserver path) confirms any diff at once;
-   * `immediate=false` (poll path) requires the value to also match the previous poll. Returns
-   * true if the confirmed set changed in any way (added, updated, or removed), so the caller can
-   * fire a single onChange for a batch of trackers. */
+  /** Read a fresh snapshot, diff against baseline, and update the confirmed set. Page-origin
+   * divergences (provenance / animation) are absorbed into the baseline; the rest follow the
+   * stability rule: `immediate=true` (MutationObserver path) confirms any diff at once,
+   * `immediate=false` (poll path) requires the value to also match the previous poll. Returns true
+   * if the confirmed set changed in any way. */
   ingest(immediate: boolean): boolean
   /** The confirmed property changes vs. the baseline, ready for the save message. */
   getCurrentChanges(): PropertyChange[]
-  /** Re-snapshot the baseline and clear changes (call after a successful apply). Does NOT fire
-   * any callback — the caller (manager or wrapper) is responsible for its own onChange. */
+  /** Mark `property` (or the whole element) as animation-driven, blocking its confirmation and
+   * dropping any already-confirmed entry. The taint persists until a subsequent `ingest` sees the
+   * animation probe report it as stopped (then its settled value is absorbed). Returns true if a
+   * confirmed entry was dropped (so the caller can fire onChange). */
+  taint(property: SupportedProperty | 'all'): boolean
+  /** Whether any animation taint is currently set. */
+  hasTaint(): boolean
+  /** Re-snapshot the baseline and clear changes + taint (call after a successful apply). Does NOT
+   * fire any callback — the caller owns its own onChange. */
   rebaseline(): void
+}
+
+function defaultGetAnimatingProperties(element: Element): () => AnimatingProperties {
+  return () => {
+    const el = element as Element & {
+      getAnimations?: (options?: { subtree?: boolean }) => Animation[]
+    }
+    if (typeof el.getAnimations !== 'function') return EMPTY_ANIMATING
+    const out = new Set<SupportedProperty>()
+    let unintrospectable = false
+    for (const anim of el.getAnimations()) {
+      const state = anim.playState
+      // 'running' (and 'paused' mid-fill) owns the properties; 'finished'/'idle' has released them.
+      if (state === 'finished' || state === 'idle') continue
+      const effect = anim.effect as KeyframeEffect | null
+      if (!effect || typeof effect.getKeyframes !== 'function') {
+        unintrospectable = true
+        continue
+      }
+      for (const frame of effect.getKeyframes()) {
+        for (const key of Object.keys(frame)) {
+          if (
+            key === 'offset' ||
+            key === 'computedOffset' ||
+            key === 'easing' ||
+            key === 'composite'
+          )
+            continue
+          const kebab = key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())
+          const watched = watchedPropertyFor(kebab)
+          if (watched) out.add(watched)
+        }
+      }
+      // Keys that map to nothing watched (e.g. `transform`) are simply ignored — that animation
+      // affects no tracked property, so it needn't suppress anything.
+    }
+    // A running animation we couldn't introspect at all → suppress the whole element for its
+    // duration (conservative: better than recording an animated frame).
+    if (unintrospectable) return 'all'
+    return out
+  }
 }
 
 export function createElementTracker(
@@ -73,44 +133,103 @@ export function createElementTracker(
     (() => {
       const cs = getComputedStyle(element)
       const snap: Snapshot = new Map()
-      for (const property of WATCHED_PROPERTIES) {
+      for (const property of WATCHED_PROPERTY_LIST) {
         snap.set(property, cs.getPropertyValue(property))
       }
       return snap
     })
+  const consumeProvenance = options.consumeProvenance ?? defaultConsumeProvenance
+  const getAnimatingProperties =
+    options.getAnimatingProperties ?? defaultGetAnimatingProperties(element)
 
   let baseline = readAll()
   // Confirmed changes: property → current value (differs from baseline, past the stability guard).
   const confirmed = new Map<SupportedProperty, string>()
   // Value seen on the previous poll, for the two-poll stability guard.
   let lastPoll: Snapshot = new Map(baseline)
+  // Animation taint, seeded by CSS transition/animation events; persists until the probe clears it.
+  const tainted = new Set<SupportedProperty>()
+  let taintedAll = false
+
+  // True when `property` is set directly on the element's own inline style with a CONCRETE value —
+  // the signal that the user deliberately edited it in DevTools, as opposed to it being
+  // computed/derived. A `var()` inline value is excluded: its computed result follows custom
+  // properties the app animates (so it's app-driven, not the concrete value a DevTools edit types),
+  // and treating it as a protected edit would wrongly shield it from a custom-property write's
+  // "broad" provenance.
+  function authoredInline(property: string): boolean {
+    const style = (element as Partial<ElementCSSInlineStyle>).style
+    if (!style) return false
+    const value = style.getPropertyValue(property)
+    return value !== '' && !value.includes('var(')
+  }
 
   function ingest(immediate: boolean): boolean {
     const current = readAll()
+    const prov = consumeProvenance(element)
+
+    // The animation probe (getAnimations) is the costlier read, so only consult it when something
+    // actually diverges or the element is already tainted — static elements take the cheap path.
+    let anyDiverged = false
+    for (const property of WATCHED_PROPERTY_LIST) {
+      if (!valuesEqual(property, baseline.get(property) ?? '', current.get(property) ?? '')) {
+        anyDiverged = true
+        break
+      }
+    }
+    const needProbe = anyDiverged || taintedAll || tainted.size > 0
+    const probe = needProbe ? getAnimatingProperties() : EMPTY_ANIMATING
+    const probeAll = probe === 'all'
+    const probeSet = probeAll ? null : probe
+
+    // Seed taint from the probe so a property the probe reports animating persists as tainted into
+    // the NEXT ingest — covering a transition that ends in the gap between this poll and the next
+    // (the next ingest then absorbs its settled value before un-tainting it, below).
+    if (probeAll) taintedAll = true
+    else if (probeSet) for (const property of probeSet) tainted.add(property)
+
     let changed = false
-    for (const property of WATCHED_PROPERTIES) {
+    for (const property of WATCHED_PROPERTY_LIST) {
       const now = current.get(property) ?? ''
       const base = baseline.get(property) ?? ''
-      if (!valuesEqual(property, base, now)) {
-        const stable = immediate || valuesEqual(property, lastPoll.get(property) ?? '', now)
-        if (stable && confirmed.get(property) !== now) {
-          confirmed.set(property, now)
-          changed = true
+      if (valuesEqual(property, base, now)) {
+        if (confirmed.delete(property)) changed = true
+      } else {
+        const styleMarked = prov.props.has(property)
+        // A class/attr change makes any computed divergence app-origin — except a property the user
+        // authored inline in DevTools without a JS write to it (that's a real edit to protect).
+        const broadMarked = prov.broad && !(authoredInline(property) && !styleMarked)
+        const animating =
+          taintedAll || tainted.has(property) || probeAll || (probeSet?.has(property) ?? false)
+        if (styleMarked || broadMarked || animating) {
+          // Page-origin: absorb into the baseline so it neither surfaces now nor resurfaces later.
+          baseline.set(property, now)
+          if (confirmed.delete(property)) changed = true
+        } else {
+          const stable = immediate || valuesEqual(property, lastPoll.get(property) ?? '', now)
+          if (stable && confirmed.get(property) !== now) {
+            confirmed.set(property, now)
+            changed = true
+          }
         }
-      } else if (confirmed.delete(property)) {
-        // Reverted to baseline — drop the change.
-        changed = true
       }
       lastPoll.set(property, now)
     }
-    return changed
-  }
 
-  // True when `property` is set directly on the element's own inline style — the signal that the
-  // user deliberately edited it in DevTools, as opposed to it being computed/derived.
-  function authoredInline(property: string): boolean {
-    const style = (element as Partial<ElementCSSInlineStyle>).style
-    return !!style && style.getPropertyValue(property) !== ''
+    // Drop taint for properties the probe confirms are no longer animating. Their settled value (if
+    // it diverged) was just absorbed above, so the next ingest sees no divergence — no phantom. The
+    // event-seeded taint persists across ingests until this clears it, which is what catches a
+    // transition that started and ended entirely between two polls.
+    if (needProbe && !probeAll) {
+      if (tainted.size > 0) {
+        for (const property of [...tainted]) {
+          if (!probeSet?.has(property)) tainted.delete(property)
+        }
+      }
+      if (taintedAll && (probeSet?.size ?? 0) === 0) taintedAll = false
+    }
+
+    return changed
   }
 
   return {
@@ -130,10 +249,25 @@ export function createElementTracker(
       }
       return changes
     },
+    taint(property) {
+      if (property === 'all') {
+        taintedAll = true
+        const had = confirmed.size > 0
+        confirmed.clear()
+        return had
+      }
+      tainted.add(property)
+      return confirmed.delete(property)
+    },
+    hasTaint() {
+      return taintedAll || tainted.size > 0
+    },
     rebaseline() {
       baseline = readAll()
       confirmed.clear()
       lastPoll = new Map(baseline)
+      tainted.clear()
+      taintedAll = false
     },
   }
 }

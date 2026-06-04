@@ -31,11 +31,13 @@ class FakeWebSocket implements WebSocketLike {
 }
 
 // Let happy-dom's MutationObserver microtasks run, plus the manager's structural-sync microtask
-// and any setTimeout(0)-deferred work.
+// and any deferred work. The wait outlasts mount's ~32ms immediate-path debounce + animation-settle
+// (mount opts into them; see createWatchManager) so a style edit's ingest has fired by the time we
+// assert.
 const flushMutations = async () => {
   await Promise.resolve()
   await Promise.resolve()
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 50))
 }
 
 afterEach(() => {

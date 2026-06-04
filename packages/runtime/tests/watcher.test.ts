@@ -267,3 +267,22 @@ describe('createWatcher — redundant-reflection filtering', () => {
     watcher.stop()
   })
 })
+
+describe('createWatcher — animation probe', () => {
+  it('does not record an inline change to a property reported as animating', async () => {
+    const el = document.createElement('div')
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    const watcher = createWatcher(el, {
+      pollMs: 1_000_000,
+      getAnimatingProperties: () => new Set<SupportedProperty>(['opacity']),
+    })
+
+    el.style.opacity = '1'
+    await flushMutations()
+
+    // opacity is under an active animation → the change is absorbed, not recorded.
+    expect(watcher.getCurrentChanges()).toEqual([])
+    watcher.stop()
+  })
+})

@@ -31,5 +31,11 @@ export default defineConfig({
   test: {
     include: ['packages/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // The Tailwind v4 `__unstable__` engine tests (the documented "#1 risk" CI canaries) load a real
+    // DesignSystem and run `canonicalizeCandidates`, which legitimately takes ~5s — right at
+    // vitest's 5000ms default. Give the whole suite generous headroom so slower CI runners don't
+    // time those out (every other test runs in well under a second, so this only raises the ceiling).
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 })

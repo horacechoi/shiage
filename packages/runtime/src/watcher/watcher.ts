@@ -14,7 +14,8 @@
 //      MutationObserver never sees; subject to the tracker's two-poll stability guard.
 import type { SupportedProperty } from '@shiage/core/supported'
 import type { PropertyChange } from '@shiage/core/protocol'
-import { createElementTracker } from './element-tracker'
+import { createElementTracker, type AnimatingProperties } from './element-tracker'
+import type { ElementProvenance } from '../provenance'
 
 export interface WatcherOptions {
   /** Poll interval (ms) for catching stylesheet-rule edits. Default 500. */
@@ -22,6 +23,10 @@ export interface WatcherOptions {
   /** Snapshot every supported property's current computed value. Injectable for tests; defaults
    * to a single `getComputedStyle(element)` read per call. */
   readAll?: () => Map<SupportedProperty, string>
+  /** Read+clear the element's programmatic-mutation markers. Injectable for tests. */
+  consumeProvenance?: (el: Element) => ElementProvenance
+  /** The watched properties currently under an active Web Animation. Injectable for tests. */
+  getAnimatingProperties?: () => AnimatingProperties
   /** Called whenever the confirmed change set changes (so the overlay can update its count). */
   onChange?: () => void
 }
@@ -37,7 +42,11 @@ export interface Watcher {
 
 export function createWatcher(element: Element, options: WatcherOptions = {}): Watcher {
   const pollMs = options.pollMs ?? 500
-  const tracker = createElementTracker(element, { readAll: options.readAll })
+  const tracker = createElementTracker(element, {
+    readAll: options.readAll,
+    consumeProvenance: options.consumeProvenance,
+    getAnimatingProperties: options.getAnimatingProperties,
+  })
 
   const observer = new MutationObserver(() => {
     if (tracker.ingest(true)) options.onChange?.()

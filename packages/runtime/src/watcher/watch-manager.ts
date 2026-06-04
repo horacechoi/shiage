@@ -1,24 +1,28 @@
 // The ambient multi-element watch driver. Owns ONE shared `setInterval` poll, ONE document-wide
-// attribute `MutationObserver`, and ONE document-wide structural `MutationObserver`, plus a
-// `Map<Element, ElementTracker>` registry of every currently-stamped element. The per-element diff
-// logic (baseline, stability guard, longhand filtering, box-model dimension suppression) lives in
+// attribute `MutationObserver`, ONE document-wide structural `MutationObserver`, and ONE
+// document-wide set of CSS animation/transition listeners, plus a `Map<Element, ElementTracker>`
+// registry of every currently-stamped element. The per-element diff logic (baseline, stability
+// guard, provenance absorption, animation taint, box-model dimension suppression) lives in
 // element-tracker.ts and is reused unchanged here — this file is purely orchestration.
 //
-// Two deliberate behavior choices that distinguish ambient mode from the single-element
-// `createWatcher` wrapper:
+// Deliberate behavior choices that distinguish ambient mode from the single-element `createWatcher`
+// wrapper:
 //
 //   1. The attribute observer drops `class` from its filter (`attributeFilter: ['style']` only).
 //      DevTools edits `style` or stylesheet rules — never `class` directly — so dropping it loses
 //      essentially no deliberate signal, while cutting the dominant ambient-noise source: an app
 //      className swap (hover/active/route/state) currently fires the *immediate* path and bypasses
 //      the two-poll stability guard. A real class-driven computed change still surfaces via the
-//      poll path if it settles.
+//      poll path if it settles (and is now absorbed if it carries provenance — see element-tracker).
 //
 //   2. A structural `MutationObserver` (`childList: true, subtree: true`) re-syncs the registry
-//      when the DOM changes (HMR, app navigation, conditional renders), so trackers are added for
-//      newly-stamped elements and dropped for ones that left the document — without making the
-//      single-element wrapper or `mount.ts` aware of any of this.
+//      when the DOM changes (HMR, app navigation, conditional renders).
+//
+//   3. CSS transition/animation events (captured at the document) taint the originating tracked
+//      element so an in-flight animation's frames are never recorded; when an element's animations
+//      end, its settled values are absorbed into the baseline rather than reported.
 import type { PropertyChange } from '@shiage/core/protocol'
+import { watchedPropertyFor, type SupportedProperty } from '@shiage/core/supported'
 import { createElementTracker, type ElementTracker } from './element-tracker'
 
 // The stamp the jsx-transform writes on every host element it sees. Tracked elements are exactly
@@ -36,6 +40,21 @@ export interface ElementChanges {
   changes: PropertyChange[]
 }
 
+/** Handler the animation-event subscriber drives on transition/animation START. `property` is a
+ * specific watched property for transitions, or `'all'` for keyframe animations (whose properties
+ * aren't on the event). End/cancel are not needed — the tracker's `getAnimations()` probe is the
+ * authority on when an animation has stopped. */
+export interface AnimationEventHandlers {
+  onStart(target: EventTarget | null, property: SupportedProperty | 'all'): void
+}
+
+/** Subscribe to CSS transition/animation lifecycle; returns an unsubscribe fn. Injectable so tests
+ * can drive the handlers deterministically (happy-dom does not dispatch these events). */
+export type AnimationEventsSubscriber = (
+  handlers: AnimationEventHandlers,
+  doc: Document,
+) => () => void
+
 export interface WatchManagerOptions {
   /** Poll interval (ms) for catching stylesheet-rule edits. Default 500. */
   pollMs?: number
@@ -49,10 +68,16 @@ export interface WatchManagerOptions {
   createTracker?: (el: Element) => ElementTracker
   /** Delay (ms) before re-baselining a freshly-added tracker, to absorb the layout-settling and
    * stylesheet-load deltas that show up if the tracker is created while the page is still
-   * rendering. The settle is skipped if the tracker already has confirmed changes by then — we
-   * preserve any edit the user managed to make during the window. Default 0 (off) for unit-test
-   * determinism; mount.ts opts in with ~32ms (~2 frames) in real browser use. */
+   * rendering. Skipped if the tracker already has confirmed changes by then. Default 0 (off) for
+   * unit-test determinism; mount.ts opts in with ~32ms (~2 frames). */
   settleMs?: number
+  /** Debounce (ms) for the attribute-observer "immediate" ingest, so a frame-by-frame inline-style
+   * animation collapses into one ingest instead of N. Default 0 (synchronous) for test
+   * determinism; mount.ts opts in with ~32ms. */
+  immediateDebounceMs?: number
+  /** Subscribe to CSS transition/animation start events (default: capturing document listeners).
+   * Injectable for tests. */
+  animationEvents?: AnimationEventsSubscriber
 }
 
 export interface WatchManager {
@@ -67,35 +92,64 @@ export interface WatchManager {
    * "reset this element's noise" escape hatch). `rebaseline()` with no argument resets all. */
   rebaseline(element?: Element): void
   /** Re-scan `[data-shiage-loc]` and reconcile the registry. The structural observer already calls
-   * this on DOM changes; exposed for tests and for any code that mutates the DOM synchronously
-   * (e.g. happy-dom test scaffolding). */
+   * this on DOM changes; exposed for tests and for any code that mutates the DOM synchronously. */
   sync(): void
-  /** Disconnect all observers, clear the interval, and drop the registry. */
+  /** Disconnect all observers, clear timers, remove animation listeners, and drop the registry. */
   stop(): void
+}
+
+// Default subscriber: capturing document listeners. Transitions carry the exact `propertyName`
+// (forwarded only when it's a watched property); keyframe animations don't, so they taint `'all'`.
+const defaultAnimationEvents: AnimationEventsSubscriber = (handlers, doc) => {
+  const onTransitionStart = (e: Event): void => {
+    // Transitions fire per-longhand (e.g. `border-top-color`); map to the watched property.
+    const watched = watchedPropertyFor((e as TransitionEvent).propertyName)
+    if (watched) handlers.onStart(e.target, watched)
+  }
+  const onAnimationStart = (e: Event): void => handlers.onStart(e.target, 'all')
+  // `transitionrun` fires at creation (before any delay) for the earliest possible taint. We only
+  // need the START — the tracker's `getAnimations()` probe detects when each animation has stopped.
+  doc.addEventListener('transitionrun', onTransitionStart, true)
+  doc.addEventListener('animationstart', onAnimationStart, true)
+  return () => {
+    doc.removeEventListener('transitionrun', onTransitionStart, true)
+    doc.removeEventListener('animationstart', onAnimationStart, true)
+  }
 }
 
 export function createWatchManager(options: WatchManagerOptions = {}): WatchManager {
   const pollMs = options.pollMs ?? 500
   const settleMs = options.settleMs ?? 0
+  const immediateDebounceMs = options.immediateDebounceMs ?? 0
   const doc = options.doc ?? globalThis.document
   const createTracker = options.createTracker ?? createElementTracker
   const trackers = new Map<Element, ElementTracker>()
 
-  // After a tracker is added, the page may still be settling — stylesheets loading, layout still
-  // resolving — so its initial baseline can disagree with the post-paint computed values. The
-  // first poll would then surface that as "changes" the user never made. We absorb this by
-  // re-reading the baseline once after `settleMs`, preserving any edit the user managed to make
-  // during the window (anything that already confirmed before the timer fires is kept).
+  // The attribute observer's debounced "immediate" ingest. Defined up here so `scheduleSettle` can
+  // flush a pending one before deciding whether to rebaseline (see below).
+  let immediateTimer: ReturnType<typeof setTimeout> | null = null
+  function fireImmediate(): void {
+    immediateTimer = null
+    if (ingestAll(true)) options.onChange?.()
+  }
+  function flushImmediate(): void {
+    if (immediateTimer === null) return
+    clearTimeout(immediateTimer)
+    fireImmediate()
+  }
+
   function scheduleSettle(tracker: ElementTracker): void {
     if (settleMs <= 0) return
     setTimeout(() => {
       if (!tracker.element.isConnected) return
+      // A user inline edit in the settle window lands on the (debounced) immediate path; flush it
+      // first so we don't rebaseline the edit away. Layout-settling deltas come via the poll path,
+      // so they stay unconfirmed here and are correctly absorbed by the rebaseline.
+      flushImmediate()
       if (tracker.getCurrentChanges().length === 0) tracker.rebaseline()
     }, settleMs)
   }
 
-  // Reconcile registry against the live `[data-shiage-loc]` set. Returns whether membership
-  // changed, so the caller can fire onChange just once for a structural batch.
   function rescan(): boolean {
     let changed = false
     const live = new Set<Element>()
@@ -109,8 +163,6 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
       }
     }
     for (const el of [...trackers.keys()]) {
-      // `live` membership is enough — an element that left the queried set is gone for our
-      // purposes (whether literally removed or just unstamped).
       if (!live.has(el)) {
         trackers.delete(el)
         changed = true
@@ -122,9 +174,6 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
   // Initial discovery: silent (no onChange) so a fresh mount doesn't emit a spurious tick.
   rescan()
 
-  // Ingest every tracker, returning whether any of them changed. Disconnected trackers (e.g. an
-  // element removed between the structural observer firing and its microtask sync running) are
-  // skipped to avoid reading `getComputedStyle` on a detached node and recording spurious deltas.
   function ingestAll(immediate: boolean): boolean {
     let any = false
     for (const tracker of trackers.values()) {
@@ -138,16 +187,20 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
     if (ingestAll(false)) options.onChange?.()
   }, pollMs)
 
-  // Attribute observer: DevTools inline edits land here immediately. We ingest every tracker
-  // rather than route by target — a future optimization could map `mutation.target → tracker` via
-  // `target.closest('[data-shiage-loc]')`, but for now the simpler "ingest all" is correct and
-  // cheap (each tracker bails fast when its computed values equal baseline).
-  const attrObserver = new MutationObserver(() => {
-    if (ingestAll(true)) options.onChange?.()
-  })
+  // Attribute observer: DevTools inline edits land here. The debounce (see `fireImmediate` above)
+  // collapses a frame-by-frame inline-style animation (which the provenance layer absorbs anyway)
+  // into a single ingest.
+  const onAttrMutation =
+    immediateDebounceMs <= 0
+      ? fireImmediate
+      : (): void => {
+          if (immediateTimer !== null) return
+          immediateTimer = setTimeout(fireImmediate, immediateDebounceMs)
+        }
+  const attrObserver = new MutationObserver(onAttrMutation)
 
-  // Structural observer: any DOM change can change which elements are stamped. We debounce via a
-  // microtask so a burst of insertions (e.g. a full subtree render) triggers exactly one rescan.
+  // Structural observer: any DOM change can change which elements are stamped. Debounced via a
+  // microtask so a burst of insertions triggers exactly one rescan.
   let syncPending = false
   const structuralObserver = new MutationObserver(() => {
     if (syncPending) return
@@ -158,8 +211,26 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
     })
   })
 
-  // Observe from `documentElement` so the observers are alive even before `<body>` has children,
-  // and so a top-level body attribute change wouldn't be missed (unlikely in practice).
+  // ── Animation events ──
+  // On a transition/animation START, taint the originating tracked element's property (resolving an
+  // event on a child to its stamped ancestor). That's all the events do: the tracker's
+  // `getAnimations()` probe is the authority on when the animation stops (and then absorbs the
+  // settled value), so no end/cancel handling or ref-counting is needed here — which keeps this
+  // robust to the rapid, overlapping, variable-driven transitions real pages produce.
+  const animTeardown = (options.animationEvents ?? defaultAnimationEvents)(
+    {
+      onStart(target, property) {
+        if (!(target instanceof Element)) return
+        const stamped = target.closest(`[${SOURCE_LOC_ATTR}]`)
+        const tracker = stamped ? trackers.get(stamped) : undefined
+        if (!tracker) return
+        if (tracker.taint(property)) options.onChange?.()
+      },
+    },
+    doc,
+  )
+
+  // Observe from `documentElement` so the observers are alive even before `<body>` has children.
   const root = doc.documentElement
   if (root) {
     attrObserver.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'] })
@@ -201,6 +272,8 @@ export function createWatchManager(options: WatchManagerOptions = {}): WatchMana
     },
     stop() {
       clearInterval(timer)
+      if (immediateTimer !== null) clearTimeout(immediateTimer)
+      animTeardown()
       attrObserver.disconnect()
       structuralObserver.disconnect()
       trackers.clear()
