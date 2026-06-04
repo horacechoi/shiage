@@ -1,6 +1,6 @@
 {
   "name": "@shiage/runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shiage browser runtime (Shadow DOM overlay, element picker, style watcher, diff panel) — built as a single inlinable IIFE.",
   "keywords": [
     "tailwind",
