@@ -1,5 +1,13 @@
 # @shiage/next
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [5900159]
+  - @shiage/core@0.1.1
+  - @shiage/runtime@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@shiage/next",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Next.js plugin for Shiage — inspect and edit CSS in Chrome DevTools, save changes to source as Tailwind classes.",
   "keywords": [
     "next",
